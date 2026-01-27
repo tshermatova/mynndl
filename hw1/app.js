@@ -926,3 +926,9 @@ Chart.register({
 
 // Initial state
 showAlert('Please load train.csv and test.csv files to begin analysis', 'info');
+
+
+
+
+
+
