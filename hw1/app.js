@@ -1,32 +1,21 @@
 // app.js - Titanic EDA Explorer
 // To reuse this app for other datasets:
-// 1. Update the DATASET_SCHEMA configuration (lines 30-40)
+// 1. Update DATASET_SCHEMA configuration (lines 30-45)
 // 2. Update feature lists for numeric/categorical
 // 3. Update target variable if different from 'Survived'
-// 4. Update column exclusions if needed
+// 4. Update death factor analysis logic for your specific dataset
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==================== CONFIGURATION ====================
-    // DATASET SCHEMA CONFIGURATION - Update these for different datasets
     const DATASET_SCHEMA = {
-        // Features to analyze (update for different datasets)
-        features: ['Pclass', 'Name', 'Sex', 'Age', 'SibSp', 'Parch', 'Ticket', 'Fare', 'Cabin', 'Embarked'],
-        
-        // Target variable (only in train data)
+        features: ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare', 'Embarked'],
         target: 'Survived',
-        
-        // Identifier column to exclude from analysis
         identifier: 'PassengerId',
-        
-        // Column types (update based on your dataset)
         numericFeatures: ['Age', 'Fare', 'SibSp', 'Parch'],
-        categoricalFeatures: ['Pclass', 'Sex', 'Embarked', 'Cabin'],
-        
-        // Source column name
+        categoricalFeatures: ['Pclass', 'Sex', 'Embarked'],
         sourceCol: 'Dataset_Source'
     };
     
-    // Color palette for charts
     const COLORS = {
         primary: '#3498db',
         success: '#27ae60',
@@ -46,7 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
         overview: {},
         missingValues: {},
         statistics: {},
-        visualizations: {}
+        visualizations: {},
+        deathFactors: {}
     };
     
     // ==================== DOM ELEMENTS ====================
@@ -90,10 +80,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Clear existing data and charts
         resetApplication();
         
-        // Parse train data
         Papa.parse(trainFile, {
             header: true,
             dynamicTyping: true,
@@ -116,9 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     [DATASET_SCHEMA.sourceCol]: 'train'
                 }));
                 
-                console.log(`Train data loaded: ${trainData.length} rows`);
-                
-                // Parse test data
                 Papa.parse(testFile, {
                     header: true,
                     dynamicTyping: true,
@@ -141,12 +126,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             [DATASET_SCHEMA.sourceCol]: 'test'
                         }));
                         
-                        console.log(`Test data loaded: ${testData.length} rows`);
-                        
-                        // Merge datasets
                         mergedData = [...trainData, ...testData];
                         
-                        // Store overview
                         analysisResults.overview = {
                             totalRows: mergedData.length,
                             trainRows: trainData.length,
@@ -156,7 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             timestamp: new Date().toISOString()
                         };
                         
-                        // Update UI
                         showAlert(loadAlert, `✅ Successfully loaded ${mergedData.length} rows (${trainData.length} train + ${testData.length} test)`, 'success');
                         loadBtn.disabled = false;
                         runEDABtn.disabled = false;
@@ -165,7 +145,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         vizHistBtn.disabled = false;
                         vizCorrBtn.disabled = false;
                         
-                        // Show overview
                         updateOverview();
                     },
                     error: (error) => {
@@ -191,14 +170,13 @@ document.addEventListener('DOMContentLoaded', () => {
         showAlert(loadAlert, 'Running full EDA analysis...', 'info');
         runEDABtn.disabled = true;
         
-        // Clear existing charts
         destroyAllCharts();
         
-        // Run all analyses sequentially
         setTimeout(() => {
             analyzeMissingValues();
             calculateStatistics();
             createBarCharts();
+            analyzeDeathFactors();
             
             showAlert(loadAlert, '✅ EDA analysis complete! Check all sections for results.', 'success');
             runEDABtn.disabled = false;
@@ -212,7 +190,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const testRows = testData ? testData.length : 0;
         const columns = mergedData.length > 0 ? Object.keys(mergedData[0]).length : 0;
         
-        // Update overview stats
         overviewStats.innerHTML = `
             <div class="stat-card">
                 <div class="stat-title">Total Rows</div>
@@ -240,7 +217,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         
-        // Show data preview
         showDataPreview();
     }
     
@@ -252,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const previewRows = mergedData.slice(0, 8);
         const headers = Object.keys(previewRows[0]).filter(h => 
-            h !== DATASET_SCHEMA.identifier && h !== 'Name' && h !== 'Ticket' && h !== 'Cabin'
+            h !== DATASET_SCHEMA.identifier
         );
         
         let tableHTML = '<table><thead><tr>';
@@ -282,7 +258,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function analyzeMissingValues() {
         if (!mergedData || mergedData.length === 0) return;
         
-        // Calculate missing values for each column
         const columns = Object.keys(mergedData[0]).filter(col => 
             col !== DATASET_SCHEMA.sourceCol
         );
@@ -315,10 +290,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // Store for export
         analysisResults.missingValues = missingCounts;
         
-        // Update UI
         updateMissingValuesUI(missingCounts);
         createMissingChart(missingChartData);
     }
@@ -331,7 +304,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         missingValues.innerHTML = '';
         
-        // Sort by percentage descending
         const sortedEntries = Object.entries(missingCounts)
             .filter(([_, data]) => data.count > 0)
             .sort((a, b) => b[1].percentage - a[1].percentage);
@@ -358,7 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function createMissingChart(chartData) {
         if (!chartData || chartData.columns.length === 0) {
-            // Clear chart if no missing values
             if (charts.missingChart) {
                 charts.missingChart.destroy();
                 delete charts.missingChart;
@@ -370,7 +341,6 @@ document.addEventListener('DOMContentLoaded', () => {
             charts.missingChart.destroy();
         }
         
-        // Sort data for better visualization
         const sortedIndices = chartData.percentages
             .map((_, idx) => idx)
             .sort((a, b) => chartData.percentages[b] - chartData.percentages[a]);
@@ -407,37 +377,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     title: {
                         display: true,
                         text: 'Missing Values by Column (%)',
-                        font: {
-                            size: 16
-                        }
+                        font: { size: 16 }
                     },
                     tooltip: {
                         callbacks: {
-                            label: (context) => {
-                                return `Missing: ${context.parsed.y.toFixed(2)}%`;
-                            }
+                            label: (context) => `Missing: ${context.parsed.y.toFixed(2)}%`
                         }
                     },
-                    legend: {
-                        display: false
-                    }
+                    legend: { display: false }
                 },
                 scales: {
                     y: {
                         beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Percentage Missing'
-                        },
-                        ticks: {
-                            callback: (value) => `${value}%`
-                        }
+                        title: { display: true, text: 'Percentage Missing' },
+                        ticks: { callback: (value) => `${value}%` }
                     },
                     x: {
-                        ticks: {
-                            maxRotation: 45,
-                            minRotation: 0
-                        }
+                        ticks: { maxRotation: 45, minRotation: 0 }
                     }
                 }
             }
@@ -447,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function calculateStatistics() {
         if (!mergedData || !trainData) return;
         
-        // Filter out non-numeric columns and identifier
         const numericColumns = DATASET_SCHEMA.numericFeatures.filter(col => 
             col !== DATASET_SCHEMA.identifier
         );
@@ -456,7 +411,6 @@ document.addEventListener('DOMContentLoaded', () => {
             col !== DATASET_SCHEMA.identifier
         );
         
-        // Numeric statistics
         const numericStatsResult = {};
         numericColumns.forEach(feature => {
             const values = trainData
@@ -488,7 +442,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // Categorical statistics
         const categoricalStatsResult = {};
         categoricalColumns.forEach(feature => {
             const valueCounts = {};
@@ -506,7 +459,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
             
-            // Convert to array and sort by count
             const sortedCounts = Object.entries(valueCounts)
                 .sort((a, b) => b[1] - a[1])
                 .map(([value, count]) => ({
@@ -524,7 +476,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
         
-        // Group statistics by target variable (Survived)
         const groupedStats = {};
         if (trainData.some(row => row[DATASET_SCHEMA.target] !== undefined)) {
             const targetValues = [0, 1];
@@ -558,7 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
         
-        // Store for export
         analysisResults.statistics = {
             numeric: numericStatsResult,
             categorical: categoricalStatsResult,
@@ -570,12 +520,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         
-        // Update UI
         updateStatisticsUI(numericStatsResult, categoricalStatsResult, groupedStats);
     }
     
     function updateStatisticsUI(numericStats, categoricalStats, groupedStats) {
-        // Numeric stats
         if (Object.keys(numericStats).length === 0) {
             numericStats.innerHTML = '<p>No numeric features found</p>';
         } else {
@@ -599,7 +547,6 @@ document.addEventListener('DOMContentLoaded', () => {
             numericStats.innerHTML = numericHTML;
         }
         
-        // Categorical stats
         if (Object.keys(categoricalStats).length === 0) {
             categoricalStats.innerHTML = '<p>No categorical features found</p>';
         } else {
@@ -646,19 +593,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 categoricalHTML += '</div></div>';
             });
             
-            // Add grouped stats if available
             if (Object.keys(groupedStats).length > 0) {
-                categoricalHTML += '<h3>🎯 Grouped by Target Variable</h3>';
+                categoricalHTML += '<h3>🎯 Grouped by Survival Status</h3>';
                 Object.entries(groupedStats).forEach(([groupName, groupData]) => {
+                    const isSurvived = groupName.includes('1');
+                    const status = isSurvived ? 'Survived' : 'Died';
+                    const icon = isSurvived ? '✅' : '❌';
+                    
                     categoricalHTML += `
                         <div style="margin-bottom: 15px;">
-                            <h4>${groupName} (${groupData.count} samples, ${groupData.percentage}%)</h4>
+                            <h4>${icon} ${status} (${groupData.count} passengers, ${groupData.percentage}%)</h4>
                             <div class="stats-grid">
                     `;
                     
                     Object.entries(groupData.stats).forEach(([feature, stats]) => {
                         categoricalHTML += `
-                            <div class="stat-card" style="border-left-color: ${COLORS.success}">
+                            <div class="stat-card" style="border-left-color: ${isSurvived ? COLORS.success : COLORS.danger}">
                                 <div class="stat-title">${feature}</div>
                                 <div>Mean: ${stats.mean}</div>
                                 <div>Std Dev: ${stats.stdDev}</div>
@@ -675,26 +625,250 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    function analyzeDeathFactors() {
+        if (!trainData || trainData.length === 0) return;
+        
+        const deathFactors = {
+            survivalRate: 0,
+            deathRate: 0,
+            factors: {}
+        };
+        
+        const totalPassengers = trainData.length;
+        const survived = trainData.filter(row => row[DATASET_SCHEMA.target] === 1).length;
+        const died = trainData.filter(row => row[DATASET_SCHEMA.target] === 0).length;
+        
+        deathFactors.survivalRate = parseFloat((survived / totalPassengers * 100).toFixed(2));
+        deathFactors.deathRate = parseFloat((died / totalPassengers * 100).toFixed(2));
+        
+        DATASET_SCHEMA.categoricalFeatures.forEach(feature => {
+            const values = [...new Set(trainData.map(row => row[feature]))];
+            const factorAnalysis = {};
+            
+            values.forEach(value => {
+                const subset = trainData.filter(row => row[feature] === value);
+                const total = subset.length;
+                const diedInGroup = subset.filter(row => row[DATASET_SCHEMA.target] === 0).length;
+                const deathRate = total > 0 ? parseFloat((diedInGroup / total * 100).toFixed(2)) : 0;
+                
+                factorAnalysis[value] = {
+                    total,
+                    died: diedInGroup,
+                    deathRate,
+                    survivalRate: parseFloat(((total - diedInGroup) / total * 100).toFixed(2))
+                };
+            });
+            
+            deathFactors.factors[feature] = factorAnalysis;
+        });
+        
+        const numericAnalysis = {};
+        DATASET_SCHEMA.numericFeatures.forEach(feature => {
+            const diedValues = trainData
+                .filter(row => row[DATASET_SCHEMA.target] === 0)
+                .map(row => row[feature])
+                .filter(val => val !== null && !isNaN(val));
+            
+            const survivedValues = trainData
+                .filter(row => row[DATASET_SCHEMA.target] === 1)
+                .map(row => row[feature])
+                .filter(val => val !== null && !isNaN(val));
+            
+            if (diedValues.length > 0 && survivedValues.length > 0) {
+                const diedMean = diedValues.reduce((a, b) => a + b, 0) / diedValues.length;
+                const survivedMean = survivedValues.reduce((a, b) => a + b, 0) / survivedValues.length;
+                const difference = parseFloat((diedMean - survivedMean).toFixed(2));
+                
+                numericAnalysis[feature] = {
+                    diedMean: parseFloat(diedMean.toFixed(2)),
+                    survivedMean: parseFloat(survivedMean.toFixed(2)),
+                    difference,
+                    higherInDeaths: difference > 0 ? feature : null,
+                    impact: Math.abs(difference) > (Math.abs(diedMean) * 0.1) ? 'High' : 'Low'
+                };
+            }
+        });
+        
+        deathFactors.numericFactors = numericAnalysis;
+        
+        const mainFactors = [];
+        
+        Object.entries(deathFactors.factors).forEach(([feature, values]) => {
+            Object.entries(values).forEach(([value, stats]) => {
+                if (stats.deathRate > deathFactors.deathRate * 1.5) {
+                    mainFactors.push({
+                        feature,
+                        value,
+                        deathRate: stats.deathRate,
+                        impact: 'High'
+                    });
+                }
+            });
+        });
+        
+        Object.entries(deathFactors.numericFactors).forEach(([feature, stats]) => {
+            if (stats.impact === 'High' && Math.abs(stats.difference) > 0) {
+                mainFactors.push({
+                    feature,
+                    value: `Higher in deaths by ${Math.abs(stats.difference).toFixed(2)}`,
+                    deathRate: null,
+                    impact: 'High'
+                });
+            }
+        });
+        
+        deathFactors.mainFactors = mainFactors.sort((a, b) => {
+            const rateA = a.deathRate || 0;
+            const rateB = b.deathRate || 0;
+            return rateB - rateA;
+        });
+        
+        analysisResults.deathFactors = deathFactors;
+        
+        displayDeathFactorsAnalysis(deathFactors);
+    }
+    
+    function displayDeathFactorsAnalysis(deathFactors) {
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'death-factors-summary';
+        summaryDiv.style.cssText = `
+            margin-top: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 10px;
+            border-left: 5px solid ${COLORS.danger};
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        `;
+        
+        let html = `
+            <h3 style="color: ${COLORS.danger}; margin-bottom: 20px; border-bottom: 2px solid ${COLORS.danger}; padding-bottom: 10px;">
+                🎯 MAIN FACTORS FOR DEATH - ANALYSIS RESULTS
+            </h3>
+            
+            <div style="margin-bottom: 25px;">
+                <h4 style="color: ${COLORS.dark}; margin-bottom: 10px;">📈 Overall Survival Statistics</h4>
+                <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <div style="font-size: 2rem; font-weight: bold; color: ${COLORS.danger};">
+                            ${deathFactors.deathRate}%
+                        </div>
+                        <div style="color: #666;">Death Rate</div>
+                    </div>
+                    <div style="flex: 1; min-width: 200px;">
+                        <div style="font-size: 2rem; font-weight: bold; color: ${COLORS.success};">
+                            ${deathFactors.survivalRate}%
+                        </div>
+                        <div style="color: #666;">Survival Rate</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        if (deathFactors.mainFactors.length > 0) {
+            html += `
+                <div style="margin-bottom: 25px;">
+                    <h4 style="color: ${COLORS.dark}; margin-bottom: 15px;">🚨 Key Risk Factors Identified</h4>
+                    <div style="display: grid; gap: 15px;">
+            `;
+            
+            deathFactors.mainFactors.slice(0, 5).forEach((factor, index) => {
+                const severity = factor.deathRate > 70 ? '🚨 Critical' : 
+                                factor.deathRate > 50 ? '⚠️ High' : 
+                                '📊 Moderate';
+                
+                html += `
+                    <div style="background: white; padding: 15px; border-radius: 8px; border-left: 4px solid ${COLORS.danger};">
+                        <div style="font-weight: bold; color: ${COLORS.dark}; margin-bottom: 5px;">
+                            ${index + 1}. ${factor.feature}: "${factor.value}"
+                        </div>
+                        <div style="color: ${COLORS.danger}; font-weight: 600;">
+                            ${factor.deathRate ? `Death Rate: ${factor.deathRate}%` : `Impact: ${factor.value}`}
+                        </div>
+                        <div style="color: #666; font-size: 0.9rem; margin-top: 5px;">
+                            Risk Level: ${severity}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `</div></div>`;
+        }
+        
+        html += `
+            <div style="margin-bottom: 25px;">
+                <h4 style="color: ${COLORS.dark}; margin-bottom: 15px;">📊 Top Death Factors by Category</h4>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+        `;
+        
+        Object.entries(deathFactors.factors).forEach(([feature, values]) => {
+            const sortedValues = Object.entries(values)
+                .sort((a, b) => b[1].deathRate - a[1].deathRate)
+                .slice(0, 3);
+            
+            if (sortedValues.length > 0) {
+                html += `
+                    <div style="background: white; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div style="font-weight: bold; color: ${COLORS.dark}; margin-bottom: 10px;">
+                            ${feature}
+                        </div>
+                `;
+                
+                sortedValues.forEach(([value, stats]) => {
+                    const riskColor = stats.deathRate > 70 ? COLORS.danger : 
+                                     stats.deathRate > 50 ? COLORS.warning : 
+                                     COLORS.primary;
+                    
+                    html += `
+                        <div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #eee;">
+                            <div style="font-weight: 500;">${value}</div>
+                            <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                                <span style="color: ${riskColor};">Died: ${stats.deathRate}%</span>
+                                <span style="color: ${COLORS.success};">Survived: ${stats.survivalRate}%</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+            }
+        });
+        
+        html += `</div></div>`;
+        
+        const conclusion = deathFactors.mainFactors.length > 0 ? 
+            `<h4 style="color: ${COLORS.danger}; margin-top: 20px; padding: 15px; background: #fff5f5; border-radius: 8px;">
+                🔍 CONCLUSION: The MAIN FACTOR for death is <strong>${deathFactors.mainFactors[0].feature}</strong> 
+                with value "<strong>${deathFactors.mainFactors[0].value}</strong>" having 
+                ${deathFactors.mainFactors[0].deathRate ? `a ${deathFactors.mainFactors[0].deathRate}% death rate` : 'significant impact'}.
+                ${deathFactors.mainFactors[0].feature === 'Pclass' ? 'Lower class passengers (3rd class) had the highest mortality.' : ''}
+                ${deathFactors.mainFactors[0].feature === 'Sex' ? 'Male passengers had significantly higher mortality than females.' : ''}
+                ${deathFactors.mainFactors[0].feature === 'Embarked' ? 'Passengers from certain embarkation points had higher mortality.' : ''}
+            </h4>` : 
+            `<h4 style="color: ${COLORS.warning}; margin-top: 20px;">⚠️ No significant death factors identified above threshold.</h4>`;
+        
+        html += conclusion;
+        
+        summaryDiv.innerHTML = html;
+        categoricalStats.appendChild(summaryDiv);
+    }
+    
     function createBarCharts() {
         if (!trainData || trainData.length === 0) {
             showAlert(loadAlert, 'Please load train data first', 'error');
             return;
         }
         
-        // Check if target variable exists
         if (!trainData[0].hasOwnProperty(DATASET_SCHEMA.target)) {
             showAlert(loadAlert, `Target variable '${DATASET_SCHEMA.target}' not found in train data`, 'error');
             return;
         }
         
-        // Prepare data for categorical features
         const categoricalFeatures = ['Pclass', 'Sex', 'Embarked'];
         const labels = [];
         const survivedCounts = [];
         const notSurvivedCounts = [];
         
         categoricalFeatures.forEach(feature => {
-            // Get unique values for this feature
             const uniqueValues = [...new Set(
                 trainData.map(row => row[feature]).filter(v => v !== null && v !== undefined)
             )].sort();
@@ -710,12 +884,10 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
         
-        // Destroy existing chart
         if (charts.mainChart) {
             charts.mainChart.destroy();
         }
         
-        // Create new chart
         charts.mainChart = new Chart(mainChartCtx, {
             type: 'bar',
             data: {
@@ -729,7 +901,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         borderWidth: 1
                     },
                     {
-                        label: '❌ Not Survived',
+                        label: '❌ Died',
                         data: notSurvivedCounts,
                         backgroundColor: 'rgba(231, 76, 60, 0.7)',
                         borderColor: 'rgba(192, 57, 43, 1)',
@@ -744,9 +916,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     title: {
                         display: true,
                         text: 'Survival Distribution by Categorical Features',
-                        font: {
-                            size: 16
-                        }
+                        font: { size: 16 }
                     },
                     tooltip: {
                         callbacks: {
@@ -765,17 +935,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         ticks: {
                             maxRotation: 45,
                             minRotation: 0,
-                            font: {
-                                size: 11
-                            }
+                            font: { size: 11 }
                         }
                     },
                     y: {
                         beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Count'
-                        }
+                        title: { display: true, text: 'Count' }
                     }
                 },
                 interaction: {
@@ -785,7 +950,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // Store visualization data
         analysisResults.visualizations.barCharts = {
             features: categoricalFeatures,
             labels: labels,
@@ -801,7 +965,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Create histogram for Age distribution
         const ageData = trainData
             .map(row => row.Age)
             .filter(age => age !== null && !isNaN(age) && typeof age === 'number');
@@ -811,14 +974,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Determine optimal number of bins using Freedman-Diaconis rule
         const sortedAge = [...ageData].sort((a, b) => a - b);
         const iqr = sortedAge[Math.floor(sortedAge.length * 0.75)] - sortedAge[Math.floor(sortedAge.length * 0.25)];
         const binWidth = 2 * iqr * Math.pow(sortedAge.length, -1/3);
         const numBins = Math.ceil((Math.max(...ageData) - Math.min(...ageData)) / binWidth);
-        const actualBins = Math.min(Math.max(numBins, 5), 20); // Limit between 5 and 20 bins
+        const actualBins = Math.min(Math.max(numBins, 5), 20);
         
-        // Create bins
         const minAge = Math.floor(Math.min(...ageData));
         const maxAge = Math.ceil(Math.max(...ageData));
         const binSize = (maxAge - minAge) / actualBins;
@@ -831,19 +992,16 @@ document.addEventListener('DOMContentLoaded', () => {
             bins[binIndex]++;
         });
         
-        // Create labels for bins
         for (let i = 0; i < actualBins; i++) {
             const start = minAge + i * binSize;
             const end = minAge + (i + 1) * binSize;
             binLabels[i] = `${start.toFixed(0)}-${end.toFixed(0)}`;
         }
         
-        // Destroy existing chart
         if (charts.mainChart) {
             charts.mainChart.destroy();
         }
         
-        // Create new chart
         charts.mainChart = new Chart(mainChartCtx, {
             type: 'bar',
             data: {
@@ -863,9 +1021,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     title: {
                         display: true,
                         text: `Age Distribution Histogram (${ageData.length} samples, ${actualBins} bins)`,
-                        font: {
-                            size: 16
-                        }
+                        font: { size: 16 }
                     },
                     tooltip: {
                         callbacks: {
@@ -880,22 +1036,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 scales: {
                     y: {
                         beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Frequency'
-                        }
+                        title: { display: true, text: 'Frequency' }
                     },
                     x: {
-                        title: {
-                            display: true,
-                            text: 'Age Range'
-                        }
+                        title: { display: true, text: 'Age Range' }
                     }
                 }
             }
         });
         
-        // Store visualization data
         analysisResults.visualizations.histograms = {
             feature: 'Age',
             data: ageData,
@@ -918,7 +1067,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Prepare numeric features for correlation
         const numericFeatures = ['Age', 'Fare', 'SibSp', 'Parch', DATASET_SCHEMA.target];
         const validFeatures = numericFeatures.filter(feature => {
             if (feature === DATASET_SCHEMA.target) {
@@ -927,17 +1075,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         });
         
-        // Prepare data matrix
-        const dataMatrix = [];
-        const validIndices = [];
-        
-        // First pass: collect all data
         const featureData = validFeatures.map(feature => {
             return trainData.map(row => row[feature]);
         });
         
-        // Find rows with complete data
+        const validIndices = [];
         const n = trainData.length;
+        
         for (let i = 0; i < n; i++) {
             let valid = true;
             for (let j = 0; j < validFeatures.length; j++) {
@@ -957,13 +1101,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Build data matrix with complete rows only
+        const dataMatrix = [];
         validIndices.forEach(idx => {
             const row = validFeatures.map((_, j) => featureData[j][idx]);
             dataMatrix.push(row);
         });
         
-        // Calculate correlation matrix
         const correlationMatrix = [];
         const m = validFeatures.length;
         
@@ -980,7 +1123,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Prepare data for chart
         const dataPoints = [];
         for (let i = 0; i < m; i++) {
             for (let j = 0; j < m; j++) {
@@ -992,12 +1134,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Destroy existing chart
         if (charts.mainChart) {
             charts.mainChart.destroy();
         }
         
-        // Create heatmap chart
         charts.mainChart = new Chart(mainChartCtx, {
             type: 'matrix',
             data: {
@@ -1008,10 +1148,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         const value = ctx.dataset.data[ctx.dataIndex].v;
                         const alpha = Math.min(Math.abs(value) * 1.5, 1);
                         
-                        if (value > 0) {
+                        if (value > 0.3) {
                             return `rgba(46, 204, 113, ${alpha})`;
-                        } else if (value < 0) {
+                        } else if (value > 0) {
+                            return `rgba(52, 152, 219, ${alpha})`;
+                        } else if (value < -0.3) {
                             return `rgba(231, 76, 60, ${alpha})`;
+                        } else if (value < 0) {
+                            return `rgba(241, 196, 15, ${alpha})`;
                         } else {
                             return 'rgba(149, 165, 166, 0.5)';
                         }
@@ -1028,10 +1172,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Correlation Heatmap',
-                        font: {
-                            size: 16
-                        }
+                        text: 'Correlation Heatmap (with Survival)',
+                        font: { size: 16 }
                     },
                     tooltip: {
                         callbacks: {
@@ -1039,7 +1181,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const data = ctx.dataset.data[ctx.dataIndex];
                                 const xLabel = validFeatures[data.x];
                                 const yLabel = validFeatures[data.y];
-                                return `${yLabel} ↔ ${xLabel}: ${data.v.toFixed(3)}`;
+                                const correlation = data.v;
+                                let interpretation = '';
+                                
+                                if (correlation > 0.7) interpretation = 'Very Strong Positive';
+                                else if (correlation > 0.3) interpretation = 'Positive';
+                                else if (correlation > 0.1) interpretation = 'Weak Positive';
+                                else if (correlation > -0.1) interpretation = 'No Correlation';
+                                else if (correlation > -0.3) interpretation = 'Weak Negative';
+                                else if (correlation > -0.7) interpretation = 'Negative';
+                                else interpretation = 'Very Strong Negative';
+                                
+                                return `${yLabel} ↔ ${xLabel}: ${correlation.toFixed(3)} (${interpretation})`;
                             }
                         }
                     },
@@ -1053,30 +1206,102 @@ document.addEventListener('DOMContentLoaded', () => {
                             display: true,
                             callback: (value, index) => validFeatures[index]
                         },
-                        grid: {
-                            display: false
-                        }
+                        grid: { display: false }
                     },
                     y: {
                         ticks: {
                             display: true,
                             callback: (value, index) => validFeatures[index]
                         },
-                        grid: {
-                            display: false
-                        }
+                        grid: { display: false }
                     }
                 }
             }
         });
         
-        // Store visualization data
         analysisResults.visualizations.correlation = {
             features: validFeatures,
             matrix: correlationMatrix,
             completeSamples: validIndices.length,
             type: 'heatmap'
         };
+        
+        displayCorrelationInsights(correlationMatrix, validFeatures);
+    }
+    
+    function displayCorrelationInsights(matrix, features) {
+        const insightsDiv = document.createElement('div');
+        insightsDiv.className = 'correlation-insights';
+        insightsDiv.style.cssText = `
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid ${COLORS.info};
+        `;
+        
+        let insightsHTML = '<h4 style="color: #2c3e50; margin-bottom: 15px;">📊 Correlation Insights</h4>';
+        
+        const targetIndex = features.indexOf(DATASET_SCHEMA.target);
+        if (targetIndex !== -1) {
+            insightsHTML += '<div style="margin-bottom: 10px;"><strong>Correlation with Survival:</strong></div>';
+            insightsHTML += '<div style="display: grid; gap: 10px;">';
+            
+            for (let i = 0; i < features.length; i++) {
+                if (i !== targetIndex) {
+                    const correlation = matrix[targetIndex][i];
+                    const absCorrelation = Math.abs(correlation);
+                    let strength = '';
+                    let color = '';
+                    let icon = '';
+                    
+                    if (absCorrelation > 0.3) {
+                        strength = correlation > 0 ? 'Positive' : 'Negative';
+                        color = correlation > 0 ? COLORS.success : COLORS.danger;
+                        icon = correlation > 0 ? '📈' : '📉';
+                    } else {
+                        strength = 'Weak';
+                        color = COLORS.warning;
+                        icon = '📊';
+                    }
+                    
+                    insightsHTML += `
+                        <div style="display: flex; justify-content: space-between; align-items: center; 
+                                    padding: 8px 12px; background: white; border-radius: 6px; border-left: 3px solid ${color};">
+                            <div>
+                                <span style="font-weight: 500;">${features[i]}</span>
+                                <span style="margin-left: 10px; font-size: 0.9em; color: #666;">
+                                    ${correlation > 0 ? 'Helps Survival' : 'Reduces Survival'}
+                                </span>
+                            </div>
+                            <div style="font-weight: bold; color: ${color};">
+                                ${icon} ${correlation.toFixed(3)}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            insightsHTML += '</div>';
+        }
+        
+        insightsHTML += `
+            <div style="margin-top: 15px; padding: 10px; background: #e8f4fc; border-radius: 6px;">
+                <div style="color: #2c3e50; font-weight: 500; margin-bottom: 5px;">🎯 Key Finding:</div>
+                <div>
+                    ${matrix[targetIndex][features.indexOf('Fare')] > 0.2 ? 
+                      'Higher fare correlates with better survival (wealthier passengers had priority).' : 
+                      matrix[targetIndex][features.indexOf('Age')] < -0.1 ? 
+                      'Younger passengers had slightly better survival rates.' : 
+                      'No strong linear correlations found with numeric features.'}
+                </div>
+            </div>
+        `;
+        
+        insightsDiv.innerHTML = insightsHTML;
+        
+        const chartContainer = document.querySelector('.chart-container');
+        chartContainer.parentNode.insertBefore(insightsDiv, chartContainer.nextSibling);
     }
     
     function pearsonCorrelation(x, y) {
@@ -1095,7 +1320,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (denominator === 0) return 0;
         const correlation = numerator / denominator;
         
-        // Handle floating point precision issues
         return Math.max(-1, Math.min(1, correlation));
     }
     
@@ -1110,11 +1334,9 @@ document.addEventListener('DOMContentLoaded', () => {
         showAlert(exportAlert, 'Exporting data...', 'info');
         
         try {
-            // 1. Export merged data as CSV
             const csvContent = Papa.unparse(mergedData);
             downloadFile(csvContent, 'titanic_merged_dataset.csv', 'text/csv;charset=utf-8;');
             
-            // 2. Export analysis results as JSON
             const exportData = {
                 metadata: {
                     application: 'Titanic EDA Explorer',
@@ -1126,15 +1348,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 analysis: {
                     missingValues: analysisResults.missingValues,
                     statistics: analysisResults.statistics,
-                    visualizations: analysisResults.visualizations
+                    visualizations: analysisResults.visualizations,
+                    deathFactors: analysisResults.deathFactors
                 },
-                schema: DATASET_SCHEMA
+                schema: DATASET_SCHEMA,
+                mainConclusion: analysisResults.deathFactors.mainFactors && analysisResults.deathFactors.mainFactors.length > 0 ?
+                    `MAIN DEATH FACTOR: ${analysisResults.deathFactors.mainFactors[0].feature} - ${analysisResults.deathFactors.mainFactors[0].value}` :
+                    'No significant death factor identified'
             };
             
             const jsonContent = JSON.stringify(exportData, null, 2);
             downloadFile(jsonContent, 'titanic_eda_analysis.json', 'application/json');
             
-            // 3. Export summary report as text file
             const summaryContent = generateSummaryReport();
             downloadFile(summaryContent, 'titanic_summary_report.txt', 'text/plain');
             
@@ -1146,7 +1371,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             exportBtn.disabled = false;
             
-            // Auto-hide success message after 5 seconds
             setTimeout(() => {
                 exportAlert.style.display = 'none';
             }, 5000);
@@ -1161,7 +1385,6 @@ document.addEventListener('DOMContentLoaded', () => {
         report += `Generated: ${new Date().toLocaleString()}\n`;
         report += `Application: Titanic EDA Explorer\n\n`;
         
-        // Dataset Overview
         report += '📊 DATASET OVERVIEW\n';
         report += '-'.repeat(40) + '\n';
         report += `Total Rows: ${analysisResults.overview.totalRows || 0}\n`;
@@ -1171,27 +1394,43 @@ document.addEventListener('DOMContentLoaded', () => {
         report += `Features Analyzed: ${analysisResults.overview.features?.join(', ') || 'None'}\n`;
         report += `Target Variable: ${DATASET_SCHEMA.target}\n\n`;
         
-        // Missing Values Summary
-        report += '❌ MISSING VALUES SUMMARY\n';
-        report += '-'.repeat(40) + '\n';
-        if (analysisResults.missingValues) {
-            const missingEntries = Object.entries(analysisResults.missingValues)
-                .filter(([_, data]) => data.count > 0)
-                .sort((a, b) => b[1].percentage - a[1].percentage);
+        if (analysisResults.deathFactors && analysisResults.deathFactors.mainFactors) {
+            report += '🚨 MAIN DEATH FACTOR ANALYSIS\n';
+            report += '-'.repeat(40) + '\n';
+            report += `Overall Death Rate: ${analysisResults.deathFactors.deathRate || 0}%\n`;
+            report += `Overall Survival Rate: ${analysisResults.deathFactors.survivalRate || 0}%\n\n`;
             
-            if (missingEntries.length > 0) {
-                missingEntries.forEach(([column, data]) => {
-                    report += `${column}: ${data.count} missing (${data.percentage.toFixed(2)}%)\n`;
+            if (analysisResults.deathFactors.mainFactors.length > 0) {
+                report += 'TOP 5 DEATH FACTORS:\n';
+                analysisResults.deathFactors.mainFactors.slice(0, 5).forEach((factor, idx) => {
+                    report += `${idx + 1}. ${factor.feature}: ${factor.value} `;
+                    if (factor.deathRate) {
+                        report += `(Death Rate: ${factor.deathRate}%)\n`;
+                    } else {
+                        report += `(Significant Impact)\n`;
+                    }
                 });
-            } else {
-                report += 'No missing values found!\n';
+                
+                report += `\n🎯 PRIMARY CONCLUSION:\n`;
+                const mainFactor = analysisResults.deathFactors.mainFactors[0];
+                report += `The MAIN FACTOR contributing to death is "${mainFactor.feature}" `;
+                report += `with value "${mainFactor.value}". `;
+                if (mainFactor.deathRate) {
+                    report += `This group had a ${mainFactor.deathRate}% mortality rate, `;
+                    report += `which is ${mainFactor.deathRate > (analysisResults.deathFactors.deathRate || 0) ? 'above' : 'below'} average.\n`;
+                }
+                
+                if (mainFactor.feature === 'Pclass') {
+                    report += `Third class passengers had significantly lower survival chances.\n`;
+                } else if (mainFactor.feature === 'Sex') {
+                    report += `Male passengers had much higher mortality rates than females.\n`;
+                } else if (mainFactor.feature === 'Embarked') {
+                    report += `Embarkation location was a significant predictor of survival.\n`;
+                }
             }
-        } else {
-            report += 'Missing values analysis not run\n';
+            report += '\n';
         }
-        report += '\n';
         
-        // Key Statistics
         report += '📈 KEY STATISTICS\n';
         report += '-'.repeat(40) + '\n';
         if (analysisResults.statistics?.numeric) {
@@ -1202,13 +1441,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 report += `  Std Dev: ${stats.stdDev}\n`;
                 report += `  Range: ${stats.min} - ${stats.max}\n`;
             });
-        }
-        
-        // Survival Rate
-        if (trainData && trainData.length > 0) {
-            const survivedCount = trainData.filter(row => row[DATASET_SCHEMA.target] === 1).length;
-            const survivalRate = (survivedCount / trainData.length * 100).toFixed(2);
-            report += `\nSurvival Rate: ${survivalRate}% (${survivedCount}/${trainData.length})\n`;
         }
         
         report += '\n' + '='.repeat(60) + '\n';
@@ -1230,7 +1462,6 @@ document.addEventListener('DOMContentLoaded', () => {
             a.click();
             document.body.removeChild(a);
             
-            // Clean up URL object
             setTimeout(() => URL.revokeObjectURL(url), 100);
         } catch (error) {
             console.error('Download error:', error);
@@ -1262,19 +1493,18 @@ document.addEventListener('DOMContentLoaded', () => {
             overview: {},
             missingValues: {},
             statistics: {},
-            visualizations: {}
+            visualizations: {},
+            deathFactors: {}
         };
         
         destroyAllCharts();
         
-        // Clear UI elements
         overviewStats.innerHTML = '';
         previewTable.innerHTML = '';
         missingValues.innerHTML = '';
         numericStats.innerHTML = '';
         categoricalStats.innerHTML = '';
         
-        // Clear alerts
         loadAlert.style.display = 'none';
         exportAlert.style.display = 'none';
     }
@@ -1282,11 +1512,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==================== INITIALIZATION ====================
     console.log('🚀 Titanic EDA Explorer initialized');
     console.log('📝 To analyze different datasets:');
-    console.log('1. Update DATASET_SCHEMA configuration (lines 30-40)');
+    console.log('1. Update DATASET_SCHEMA configuration');
     console.log('2. Adjust feature lists for your dataset');
     console.log('3. Update target variable if different');
-    console.log('4. Update column exclusions if needed');
+    console.log('4. Update death factor analysis logic');
     
-    // Display initial instructions
     showAlert(loadAlert, '📁 Please upload train.csv and test.csv files from Kaggle Titanic dataset', 'info');
 });
