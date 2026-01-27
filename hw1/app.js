@@ -1,16 +1,16 @@
 // app.js - Titanic EDA Explorer
 // To reuse this app for other datasets:
-// 1. Update the schema definition (lines 40-50)
-// 2. Update feature lists for numeric/categorical (lines 53-55)
-// 3. Update column exclusions if needed (line 51)
-// 4. Update target variable if needed (line 52)
+// 1. Update the DATASET_SCHEMA configuration (lines 30-40)
+// 2. Update feature lists for numeric/categorical
+// 3. Update target variable if different from 'Survived'
+// 4. Update column exclusions if needed
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==================== CONFIGURATION ====================
     // DATASET SCHEMA CONFIGURATION - Update these for different datasets
     const DATASET_SCHEMA = {
         // Features to analyze (update for different datasets)
-        features: ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare', 'Embarked'],
+        features: ['Pclass', 'Name', 'Sex', 'Age', 'SibSp', 'Parch', 'Ticket', 'Fare', 'Cabin', 'Embarked'],
         
         // Target variable (only in train data)
         target: 'Survived',
@@ -20,10 +20,21 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Column types (update based on your dataset)
         numericFeatures: ['Age', 'Fare', 'SibSp', 'Parch'],
-        categoricalFeatures: ['Pclass', 'Sex', 'Embarked'],
+        categoricalFeatures: ['Pclass', 'Sex', 'Embarked', 'Cabin'],
         
         // Source column name
         sourceCol: 'Dataset_Source'
+    };
+    
+    // Color palette for charts
+    const COLORS = {
+        primary: '#3498db',
+        success: '#27ae60',
+        danger: '#e74c3c',
+        warning: '#f39c12',
+        info: '#9b59b6',
+        dark: '#2c3e50',
+        light: '#ecf0f1'
     };
     
     // ==================== STATE MANAGEMENT ====================
@@ -31,7 +42,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let trainData = null;
     let testData = null;
     let charts = {};
-    let analysisResults = {};
+    let analysisResults = {
+        overview: {},
+        missingValues: {},
+        statistics: {},
+        visualizations: {}
+    };
     
     // ==================== DOM ELEMENTS ====================
     const trainFileInput = document.getElementById('trainFile');
@@ -63,14 +79,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==================== DATA LOADING & MERGING ====================
     function loadAndMergeData() {
         showAlert(loadAlert, 'Loading datasets...', 'info');
+        loadBtn.disabled = true;
         
         const trainFile = trainFileInput.files[0];
         const testFile = testFileInput.files[0];
         
         if (!trainFile || !testFile) {
             showAlert(loadAlert, 'Please select both train and test CSV files', 'error');
+            loadBtn.disabled = false;
             return;
         }
+        
+        // Clear existing data and charts
+        resetApplication();
         
         // Parse train data
         Papa.parse(trainFile, {
@@ -80,6 +101,13 @@ document.addEventListener('DOMContentLoaded', () => {
             complete: (trainResults) => {
                 if (trainResults.errors.length > 0) {
                     showAlert(loadAlert, `Train CSV error: ${trainResults.errors[0].message}`, 'error');
+                    loadBtn.disabled = false;
+                    return;
+                }
+                
+                if (trainResults.data.length === 0) {
+                    showAlert(loadAlert, 'Train CSV file is empty', 'error');
+                    loadBtn.disabled = false;
                     return;
                 }
                 
@@ -87,6 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     ...row,
                     [DATASET_SCHEMA.sourceCol]: 'train'
                 }));
+                
+                console.log(`Train data loaded: ${trainData.length} rows`);
                 
                 // Parse test data
                 Papa.parse(testFile, {
@@ -96,6 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     complete: (testResults) => {
                         if (testResults.errors.length > 0) {
                             showAlert(loadAlert, `Test CSV error: ${testResults.errors[0].message}`, 'error');
+                            loadBtn.disabled = false;
+                            return;
+                        }
+                        
+                        if (testResults.data.length === 0) {
+                            showAlert(loadAlert, 'Test CSV file is empty', 'error');
+                            loadBtn.disabled = false;
                             return;
                         }
                         
@@ -104,11 +141,24 @@ document.addEventListener('DOMContentLoaded', () => {
                             [DATASET_SCHEMA.sourceCol]: 'test'
                         }));
                         
+                        console.log(`Test data loaded: ${testData.length} rows`);
+                        
                         // Merge datasets
                         mergedData = [...trainData, ...testData];
                         
+                        // Store overview
+                        analysisResults.overview = {
+                            totalRows: mergedData.length,
+                            trainRows: trainData.length,
+                            testRows: testData.length,
+                            columns: Object.keys(mergedData[0]).length,
+                            features: DATASET_SCHEMA.features,
+                            timestamp: new Date().toISOString()
+                        };
+                        
                         // Update UI
-                        showAlert(loadAlert, `Successfully loaded ${mergedData.length} rows`, 'success');
+                        showAlert(loadAlert, `✅ Successfully loaded ${mergedData.length} rows (${trainData.length} train + ${testData.length} test)`, 'success');
+                        loadBtn.disabled = false;
                         runEDABtn.disabled = false;
                         exportBtn.disabled = false;
                         vizBarBtn.disabled = false;
@@ -120,11 +170,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     error: (error) => {
                         showAlert(loadAlert, `Test file error: ${error.message}`, 'error');
+                        loadBtn.disabled = false;
                     }
                 });
             },
             error: (error) => {
                 showAlert(loadAlert, `Train file error: ${error.message}`, 'error');
+                loadBtn.disabled = false;
             }
         });
     }
@@ -136,45 +188,55 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        showAlert(loadAlert, 'Running full EDA analysis...', 'info');
+        runEDABtn.disabled = true;
+        
         // Clear existing charts
-        Object.values(charts).forEach(chart => {
-            if (chart) chart.destroy();
-        });
-        charts = {};
+        destroyAllCharts();
         
-        // Run all analyses
-        analyzeMissingValues();
-        calculateStatistics();
-        createBarCharts();
-        
-        showAlert(loadAlert, 'EDA analysis complete!', 'success');
+        // Run all analyses sequentially
+        setTimeout(() => {
+            analyzeMissingValues();
+            calculateStatistics();
+            createBarCharts();
+            
+            showAlert(loadAlert, '✅ EDA analysis complete! Check all sections for results.', 'success');
+            runEDABtn.disabled = false;
+        }, 100);
     }
     
     function updateOverview() {
-        if (!mergedData) return;
+        if (!mergedData || mergedData.length === 0) return;
         
-        // Calculate overview statistics
-        const trainRows = mergedData.filter(row => row[DATASET_SCHEMA.sourceCol] === 'train').length;
-        const testRows = mergedData.filter(row => row[DATASET_SCHEMA.sourceCol] === 'test').length;
+        const trainRows = trainData ? trainData.length : 0;
+        const testRows = testData ? testData.length : 0;
         const columns = mergedData.length > 0 ? Object.keys(mergedData[0]).length : 0;
         
         // Update overview stats
         overviewStats.innerHTML = `
             <div class="stat-card">
                 <div class="stat-title">Total Rows</div>
-                <div class="stat-value">${mergedData.length}</div>
+                <div class="stat-value">${mergedData.length.toLocaleString()}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-title">Train Rows</div>
-                <div class="stat-value">${trainRows}</div>
+                <div class="stat-value">${trainRows.toLocaleString()}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-title">Test Rows</div>
-                <div class="stat-value">${testRows}</div>
+                <div class="stat-value">${testRows.toLocaleString()}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-title">Columns</div>
                 <div class="stat-value">${columns}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Features</div>
+                <div class="stat-value">${DATASET_SCHEMA.features.length}</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Target</div>
+                <div class="stat-value">${DATASET_SCHEMA.target}</div>
             </div>
         `;
         
@@ -183,10 +245,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function showDataPreview() {
-        if (!mergedData || mergedData.length === 0) return;
+        if (!mergedData || mergedData.length === 0) {
+            previewTable.innerHTML = '<p>No data to display</p>';
+            return;
+        }
         
-        const previewRows = mergedData.slice(0, 5);
-        const headers = Object.keys(previewRows[0]);
+        const previewRows = mergedData.slice(0, 8);
+        const headers = Object.keys(previewRows[0]).filter(h => 
+            h !== DATASET_SCHEMA.identifier && h !== 'Name' && h !== 'Ticket' && h !== 'Cabin'
+        );
         
         let tableHTML = '<table><thead><tr>';
         headers.forEach(header => {
@@ -197,8 +264,13 @@ document.addEventListener('DOMContentLoaded', () => {
         previewRows.forEach(row => {
             tableHTML += '<tr>';
             headers.forEach(header => {
-                const value = row[header];
-                tableHTML += `<td>${value === null || value === undefined ? 'NaN' : value}</td>`;
+                let value = row[header];
+                if (value === null || value === undefined || value === '') {
+                    value = '<span style="color: #e74c3c; font-style: italic;">NaN</span>';
+                } else if (typeof value === 'number') {
+                    value = Number.isInteger(value) ? value : value.toFixed(2);
+                }
+                tableHTML += `<td>${value}</td>`;
             });
             tableHTML += '</tr>';
         });
@@ -208,21 +280,39 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function analyzeMissingValues() {
-        if (!mergedData) return;
+        if (!mergedData || mergedData.length === 0) return;
         
         // Calculate missing values for each column
-        const columns = Object.keys(mergedData[0]);
+        const columns = Object.keys(mergedData[0]).filter(col => 
+            col !== DATASET_SCHEMA.sourceCol
+        );
+        
         const missingCounts = {};
+        const missingChartData = {
+            columns: [],
+            counts: [],
+            percentages: []
+        };
         
         columns.forEach(col => {
-            const missing = mergedData.filter(row => 
-                row[col] === null || row[col] === undefined || 
-                row[col] === '' || isNaN(row[col])
-            ).length;
+            const missing = mergedData.filter(row => {
+                const val = row[col];
+                return val === null || val === undefined || val === '' || 
+                       (typeof val === 'number' && isNaN(val));
+            }).length;
+            
+            const percentage = (missing / mergedData.length * 100).toFixed(2);
             missingCounts[col] = {
                 count: missing,
-                percentage: (missing / mergedData.length * 100).toFixed(1)
+                percentage: parseFloat(percentage),
+                hasMissing: missing > 0
             };
+            
+            if (missing > 0) {
+                missingChartData.columns.push(col);
+                missingChartData.counts.push(missing);
+                missingChartData.percentages.push(parseFloat(percentage));
+            }
         });
         
         // Store for export
@@ -230,50 +320,81 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Update UI
         updateMissingValuesUI(missingCounts);
-        createMissingChart(missingCounts);
+        createMissingChart(missingChartData);
     }
     
     function updateMissingValuesUI(missingCounts) {
+        if (!missingCounts || Object.keys(missingCounts).length === 0) {
+            missingValues.innerHTML = '<p>No missing values detected</p>';
+            return;
+        }
+        
         missingValues.innerHTML = '';
         
-        Object.entries(missingCounts)
-            .sort((a, b) => b[1].percentage - a[1].percentage)
-            .forEach(([col, data]) => {
-                const bar = document.createElement('div');
-                bar.className = 'missing-bar';
-                bar.innerHTML = `
-                    <div class="missing-label">${col}</div>
-                    <div class="missing-value">${data.percentage}%</div>
-                    <div class="missing-visual">
-                        <div class="missing-fill" style="width: ${data.percentage}%"></div>
-                    </div>
-                    <div>(${data.count})</div>
-                `;
-                missingValues.appendChild(bar);
-            });
+        // Sort by percentage descending
+        const sortedEntries = Object.entries(missingCounts)
+            .filter(([_, data]) => data.count > 0)
+            .sort((a, b) => b[1].percentage - a[1].percentage);
+        
+        if (sortedEntries.length === 0) {
+            missingValues.innerHTML = '<p style="color: #27ae60;">✅ No missing values found!</p>';
+            return;
+        }
+        
+        sortedEntries.forEach(([col, data]) => {
+            const bar = document.createElement('div');
+            bar.className = 'missing-bar';
+            bar.innerHTML = `
+                <div class="missing-label">${col}</div>
+                <div class="missing-value">${data.percentage.toFixed(1)}%</div>
+                <div class="missing-visual">
+                    <div class="missing-fill" style="width: ${Math.min(data.percentage, 100)}%"></div>
+                </div>
+                <div style="min-width: 50px; text-align: right;">(${data.count})</div>
+            `;
+            missingValues.appendChild(bar);
+        });
     }
     
-    function createMissingChart(missingCounts) {
-        const columns = Object.keys(missingCounts);
-        const percentages = columns.map(col => parseFloat(missingCounts[col].percentage));
+    function createMissingChart(chartData) {
+        if (!chartData || chartData.columns.length === 0) {
+            // Clear chart if no missing values
+            if (charts.missingChart) {
+                charts.missingChart.destroy();
+                delete charts.missingChart;
+            }
+            return;
+        }
         
-        if (charts.missingChart) charts.missingChart.destroy();
+        if (charts.missingChart) {
+            charts.missingChart.destroy();
+        }
+        
+        // Sort data for better visualization
+        const sortedIndices = chartData.percentages
+            .map((_, idx) => idx)
+            .sort((a, b) => chartData.percentages[b] - chartData.percentages[a]);
+        
+        const sortedColumns = sortedIndices.map(i => chartData.columns[i]);
+        const sortedPercentages = sortedIndices.map(i => chartData.percentages[i]);
         
         charts.missingChart = new Chart(missingChartCtx, {
             type: 'bar',
             data: {
-                labels: columns,
+                labels: sortedColumns,
                 datasets: [{
                     label: 'Missing Values (%)',
-                    data: percentages,
-                    backgroundColor: columns.map(p => 
-                        p > 20 ? 'rgba(231, 76, 60, 0.8)' : 
-                        p > 5 ? 'rgba(241, 196, 15, 0.8)' : 
+                    data: sortedPercentages,
+                    backgroundColor: sortedPercentages.map(p => 
+                        p > 50 ? 'rgba(231, 76, 60, 0.8)' : 
+                        p > 20 ? 'rgba(241, 196, 15, 0.8)' : 
+                        p > 5 ? 'rgba(52, 152, 219, 0.8)' : 
                         'rgba(46, 204, 113, 0.8)'
                     ),
-                    borderColor: columns.map(p => 
-                        p > 20 ? 'rgba(192, 57, 43, 1)' : 
-                        p > 5 ? 'rgba(243, 156, 18, 1)' : 
+                    borderColor: sortedPercentages.map(p => 
+                        p > 50 ? 'rgba(192, 57, 43, 1)' : 
+                        p > 20 ? 'rgba(243, 156, 18, 1)' : 
+                        p > 5 ? 'rgba(41, 128, 185, 1)' : 
                         'rgba(39, 174, 96, 1)'
                     ),
                     borderWidth: 1
@@ -282,24 +403,41 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Missing Values by Column (%)',
+                        font: {
+                            size: 16
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                return `Missing: ${context.parsed.y.toFixed(2)}%`;
+                            }
+                        }
+                    },
+                    legend: {
+                        display: false
+                    }
+                },
                 scales: {
                     y: {
                         beginAtZero: true,
                         title: {
                             display: true,
                             text: 'Percentage Missing'
+                        },
+                        ticks: {
+                            callback: (value) => `${value}%`
                         }
                     },
                     x: {
                         ticks: {
-                            maxRotation: 45
+                            maxRotation: 45,
+                            minRotation: 0
                         }
-                    }
-                },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Missing Values by Column'
                     }
                 }
             }
@@ -309,66 +447,114 @@ document.addEventListener('DOMContentLoaded', () => {
     function calculateStatistics() {
         if (!mergedData || !trainData) return;
         
+        // Filter out non-numeric columns and identifier
+        const numericColumns = DATASET_SCHEMA.numericFeatures.filter(col => 
+            col !== DATASET_SCHEMA.identifier
+        );
+        
+        const categoricalColumns = DATASET_SCHEMA.categoricalFeatures.filter(col => 
+            col !== DATASET_SCHEMA.identifier
+        );
+        
         // Numeric statistics
         const numericStatsResult = {};
-        DATASET_SCHEMA.numericFeatures.forEach(feature => {
+        numericColumns.forEach(feature => {
             const values = trainData
                 .map(row => row[feature])
-                .filter(val => val !== null && !isNaN(val));
+                .filter(val => val !== null && !isNaN(val) && typeof val === 'number');
             
             if (values.length > 0) {
-                const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                const sum = values.reduce((a, b) => a + b, 0);
+                const mean = sum / values.length;
                 const sorted = [...values].sort((a, b) => a - b);
-                const median = sorted[Math.floor(sorted.length / 2)];
+                const median = sorted.length % 2 === 0 
+                    ? (sorted[sorted.length/2 - 1] + sorted[sorted.length/2]) / 2
+                    : sorted[Math.floor(sorted.length / 2)];
+                
                 const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
                 const stdDev = Math.sqrt(variance);
                 
                 numericStatsResult[feature] = {
-                    mean: mean.toFixed(2),
-                    median: median.toFixed(2),
-                    stdDev: stdDev.toFixed(2),
-                    min: Math.min(...values).toFixed(2),
-                    max: Math.max(...values).toFixed(2)
+                    count: values.length,
+                    missing: trainData.length - values.length,
+                    mean: parseFloat(mean.toFixed(4)),
+                    median: parseFloat(median.toFixed(4)),
+                    stdDev: parseFloat(stdDev.toFixed(4)),
+                    min: parseFloat(Math.min(...values).toFixed(4)),
+                    max: parseFloat(Math.max(...values).toFixed(4)),
+                    range: parseFloat((Math.max(...values) - Math.min(...values)).toFixed(4)),
+                    sum: parseFloat(sum.toFixed(4))
                 };
             }
         });
         
         // Categorical statistics
         const categoricalStatsResult = {};
-        DATASET_SCHEMA.categoricalFeatures.forEach(feature => {
+        categoricalColumns.forEach(feature => {
             const valueCounts = {};
+            const totalCount = trainData.length;
+            let missingCount = 0;
+            
             trainData.forEach(row => {
                 const val = row[feature];
-                if (val !== null && val !== undefined) {
-                    valueCounts[val] = (valueCounts[val] || 0) + 1;
+                if (val === null || val === undefined || val === '' || 
+                    (typeof val === 'number' && isNaN(val))) {
+                    missingCount++;
+                } else {
+                    const key = String(val);
+                    valueCounts[key] = (valueCounts[key] || 0) + 1;
                 }
             });
             
-            categoricalStatsResult[feature] = valueCounts;
+            // Convert to array and sort by count
+            const sortedCounts = Object.entries(valueCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(([value, count]) => ({
+                    value,
+                    count,
+                    percentage: parseFloat((count / totalCount * 100).toFixed(2))
+                }));
+            
+            categoricalStatsResult[feature] = {
+                uniqueValues: Object.keys(valueCounts).length,
+                missing: missingCount,
+                missingPercentage: parseFloat((missingCount / totalCount * 100).toFixed(2)),
+                valueCounts: sortedCounts,
+                mostCommon: sortedCounts.length > 0 ? sortedCounts[0] : null
+            };
         });
         
-        // Group by target variable (Survived)
+        // Group statistics by target variable (Survived)
         const groupedStats = {};
         if (trainData.some(row => row[DATASET_SCHEMA.target] !== undefined)) {
-            [0, 1].forEach(targetValue => {
+            const targetValues = [0, 1];
+            
+            targetValues.forEach(targetValue => {
                 const subset = trainData.filter(row => row[DATASET_SCHEMA.target] === targetValue);
                 const groupStats = {};
                 
-                DATASET_SCHEMA.numericFeatures.forEach(feature => {
+                numericColumns.forEach(feature => {
                     const values = subset
                         .map(row => row[feature])
-                        .filter(val => val !== null && !isNaN(val));
+                        .filter(val => val !== null && !isNaN(val) && typeof val === 'number');
                     
                     if (values.length > 0) {
                         const mean = values.reduce((a, b) => a + b, 0) / values.length;
                         groupStats[feature] = {
-                            mean: mean.toFixed(2),
-                            count: values.length
+                            count: values.length,
+                            mean: parseFloat(mean.toFixed(4)),
+                            stdDev: parseFloat(Math.sqrt(
+                                values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length
+                            ).toFixed(4))
                         };
                     }
                 });
                 
-                groupedStats[`Survived_${targetValue}`] = groupStats;
+                groupedStats[`${DATASET_SCHEMA.target}=${targetValue}`] = {
+                    count: subset.length,
+                    percentage: parseFloat((subset.length / trainData.length * 100).toFixed(2)),
+                    stats: groupStats
+                };
             });
         }
         
@@ -376,7 +562,12 @@ document.addEventListener('DOMContentLoaded', () => {
         analysisResults.statistics = {
             numeric: numericStatsResult,
             categorical: categoricalStatsResult,
-            grouped: groupedStats
+            grouped: groupedStats,
+            summary: {
+                numericFeatures: numericColumns,
+                categoricalFeatures: categoricalColumns,
+                totalTrainSamples: trainData.length
+            }
         };
         
         // Update UI
@@ -385,79 +576,161 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function updateStatisticsUI(numericStats, categoricalStats, groupedStats) {
         // Numeric stats
-        let numericHTML = '<h3>Numeric Features</h3><div class="stats-grid">';
-        Object.entries(numericStats).forEach(([feature, stats]) => {
-            numericHTML += `
-                <div class="stat-card">
-                    <div class="stat-title">${feature}</div>
-                    <div>Mean: ${stats.mean}</div>
-                    <div>Median: ${stats.median}</div>
-                    <div>Std Dev: ${stats.stdDev}</div>
-                    <div>Range: ${stats.min} - ${stats.max}</div>
-                </div>
-            `;
-        });
-        numericHTML += '</div>';
-        numericStats.innerHTML = numericHTML;
-        
-        // Categorical stats
-        let categoricalHTML = '<h3>Categorical Features</h3>';
-        Object.entries(categoricalStats).forEach(([feature, counts]) => {
-            categoricalHTML += `<h4>${feature}</h4><div class="stats-grid">`;
-            Object.entries(counts).forEach(([value, count]) => {
-                const percentage = (count / trainData.length * 100).toFixed(1);
-                categoricalHTML += `
-                    <div class="stat-card">
-                        <div class="stat-title">${value}</div>
-                        <div class="stat-value">${count}</div>
-                        <div>${percentage}%</div>
+        if (Object.keys(numericStats).length === 0) {
+            numericStats.innerHTML = '<p>No numeric features found</p>';
+        } else {
+            let numericHTML = '<h3>📊 Numeric Features Summary</h3><div class="stats-grid">';
+            Object.entries(numericStats).forEach(([feature, stats]) => {
+                numericHTML += `
+                    <div class="stat-card" style="border-left-color: ${COLORS.primary}">
+                        <div class="stat-title">${feature}</div>
+                        <div style="margin-top: 5px;">
+                            <div>📈 Mean: <strong>${stats.mean}</strong></div>
+                            <div>📊 Median: <strong>${stats.median}</strong></div>
+                            <div>📐 Std Dev: <strong>${stats.stdDev}</strong></div>
+                            <div>📉 Range: <strong>${stats.min} - ${stats.max}</strong></div>
+                            <div>🔢 Count: <strong>${stats.count}</strong></div>
+                            <div>❌ Missing: <strong>${stats.missing}</strong></div>
+                        </div>
                     </div>
                 `;
             });
-            categoricalHTML += '</div>';
-        });
-        categoricalStats.innerHTML = categoricalHTML;
+            numericHTML += '</div>';
+            numericStats.innerHTML = numericHTML;
+        }
+        
+        // Categorical stats
+        if (Object.keys(categoricalStats).length === 0) {
+            categoricalStats.innerHTML = '<p>No categorical features found</p>';
+        } else {
+            let categoricalHTML = '<h3>📊 Categorical Features Summary</h3>';
+            Object.entries(categoricalStats).forEach(([feature, stats]) => {
+                categoricalHTML += `
+                    <div style="margin-bottom: 20px;">
+                        <h4>${feature} 
+                            <span style="font-size: 0.8rem; color: #7f8c8d;">
+                                (${stats.uniqueValues} unique values)
+                            </span>
+                        </h4>
+                        <div class="stats-grid" style="margin-top: 10px;">
+                `;
+                
+                stats.valueCounts.slice(0, 6).forEach(item => {
+                    categoricalHTML += `
+                        <div class="stat-card" style="border-left-color: ${COLORS.info}">
+                            <div class="stat-title">${item.value}</div>
+                            <div class="stat-value">${item.count}</div>
+                            <div>${item.percentage}%</div>
+                        </div>
+                    `;
+                });
+                
+                if (stats.valueCounts.length > 6) {
+                    categoricalHTML += `
+                        <div class="stat-card" style="border-left-color: ${COLORS.light}">
+                            <div class="stat-title">+${stats.valueCounts.length - 6} more</div>
+                        </div>
+                    `;
+                }
+                
+                if (stats.missing > 0) {
+                    categoricalHTML += `
+                        <div class="stat-card" style="border-left-color: ${COLORS.danger}">
+                            <div class="stat-title">Missing</div>
+                            <div class="stat-value">${stats.missing}</div>
+                            <div>${stats.missingPercentage}%</div>
+                        </div>
+                    `;
+                }
+                
+                categoricalHTML += '</div></div>';
+            });
+            
+            // Add grouped stats if available
+            if (Object.keys(groupedStats).length > 0) {
+                categoricalHTML += '<h3>🎯 Grouped by Target Variable</h3>';
+                Object.entries(groupedStats).forEach(([groupName, groupData]) => {
+                    categoricalHTML += `
+                        <div style="margin-bottom: 15px;">
+                            <h4>${groupName} (${groupData.count} samples, ${groupData.percentage}%)</h4>
+                            <div class="stats-grid">
+                    `;
+                    
+                    Object.entries(groupData.stats).forEach(([feature, stats]) => {
+                        categoricalHTML += `
+                            <div class="stat-card" style="border-left-color: ${COLORS.success}">
+                                <div class="stat-title">${feature}</div>
+                                <div>Mean: ${stats.mean}</div>
+                                <div>Std Dev: ${stats.stdDev}</div>
+                                <div>Count: ${stats.count}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    categoricalHTML += '</div></div>';
+                });
+            }
+            
+            categoricalStats.innerHTML = categoricalHTML;
+        }
     }
     
     function createBarCharts() {
-        if (!trainData) return;
+        if (!trainData || trainData.length === 0) {
+            showAlert(loadAlert, 'Please load train data first', 'error');
+            return;
+        }
         
-        // Create bar chart for categorical features
-        const features = ['Sex', 'Pclass', 'Embarked'];
+        // Check if target variable exists
+        if (!trainData[0].hasOwnProperty(DATASET_SCHEMA.target)) {
+            showAlert(loadAlert, `Target variable '${DATASET_SCHEMA.target}' not found in train data`, 'error');
+            return;
+        }
+        
+        // Prepare data for categorical features
+        const categoricalFeatures = ['Pclass', 'Sex', 'Embarked'];
         const labels = [];
-        const survivedData = [];
-        const notSurvivedData = [];
+        const survivedCounts = [];
+        const notSurvivedCounts = [];
         
-        features.forEach(feature => {
-            const values = [...new Set(trainData.map(row => row[feature]).filter(v => v !== null))];
-            values.forEach(value => {
+        categoricalFeatures.forEach(feature => {
+            // Get unique values for this feature
+            const uniqueValues = [...new Set(
+                trainData.map(row => row[feature]).filter(v => v !== null && v !== undefined)
+            )].sort();
+            
+            uniqueValues.forEach(value => {
                 const subset = trainData.filter(row => row[feature] === value);
                 const survived = subset.filter(row => row[DATASET_SCHEMA.target] === 1).length;
                 const notSurvived = subset.filter(row => row[DATASET_SCHEMA.target] === 0).length;
                 
                 labels.push(`${feature}: ${value}`);
-                survivedData.push(survived);
-                notSurvivedData.push(notSurvived);
+                survivedCounts.push(survived);
+                notSurvivedCounts.push(notSurvived);
             });
         });
         
-        if (charts.mainChart) charts.mainChart.destroy();
+        // Destroy existing chart
+        if (charts.mainChart) {
+            charts.mainChart.destroy();
+        }
         
+        // Create new chart
         charts.mainChart = new Chart(mainChartCtx, {
             type: 'bar',
             data: {
                 labels: labels,
                 datasets: [
                     {
-                        label: 'Survived',
-                        data: survivedData,
+                        label: '✅ Survived',
+                        data: survivedCounts,
                         backgroundColor: 'rgba(46, 204, 113, 0.7)',
                         borderColor: 'rgba(39, 174, 96, 1)',
                         borderWidth: 1
                     },
                     {
-                        label: 'Not Survived',
-                        data: notSurvivedData,
+                        label: '❌ Not Survived',
+                        data: notSurvivedCounts,
                         backgroundColor: 'rgba(231, 76, 60, 0.7)',
                         borderColor: 'rgba(192, 57, 43, 1)',
                         borderWidth: 1
@@ -467,10 +740,34 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Survival Distribution by Categorical Features',
+                        font: {
+                            size: 16
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const datasetLabel = context.dataset.label;
+                                const value = context.parsed.y;
+                                const total = survivedCounts[context.dataIndex] + notSurvivedCounts[context.dataIndex];
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${datasetLabel}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     x: {
                         ticks: {
-                            maxRotation: 45
+                            maxRotation: 45,
+                            minRotation: 0,
+                            font: {
+                                size: 11
+                            }
                         }
                     },
                     y: {
@@ -481,42 +778,72 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Survival by Categorical Features'
-                    }
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
                 }
             }
         });
+        
+        // Store visualization data
+        analysisResults.visualizations.barCharts = {
+            features: categoricalFeatures,
+            labels: labels,
+            survivedCounts: survivedCounts,
+            notSurvivedCounts: notSurvivedCounts,
+            type: 'bar'
+        };
     }
     
     function createHistograms() {
-        if (!trainData) return;
+        if (!trainData || trainData.length === 0) {
+            showAlert(loadAlert, 'Please load train data first', 'error');
+            return;
+        }
         
-        // Create histogram for Age
+        // Create histogram for Age distribution
         const ageData = trainData
             .map(row => row.Age)
-            .filter(age => age !== null && !isNaN(age));
+            .filter(age => age !== null && !isNaN(age) && typeof age === 'number');
         
-        // Create bins for histogram
-        const binSize = 10;
-        const maxAge = Math.ceil(Math.max(...ageData) / binSize) * binSize;
-        const bins = Array(Math.floor(maxAge / binSize)).fill(0);
+        if (ageData.length === 0) {
+            showAlert(loadAlert, 'No valid Age data found for histogram', 'warning');
+            return;
+        }
+        
+        // Determine optimal number of bins using Freedman-Diaconis rule
+        const sortedAge = [...ageData].sort((a, b) => a - b);
+        const iqr = sortedAge[Math.floor(sortedAge.length * 0.75)] - sortedAge[Math.floor(sortedAge.length * 0.25)];
+        const binWidth = 2 * iqr * Math.pow(sortedAge.length, -1/3);
+        const numBins = Math.ceil((Math.max(...ageData) - Math.min(...ageData)) / binWidth);
+        const actualBins = Math.min(Math.max(numBins, 5), 20); // Limit between 5 and 20 bins
+        
+        // Create bins
+        const minAge = Math.floor(Math.min(...ageData));
+        const maxAge = Math.ceil(Math.max(...ageData));
+        const binSize = (maxAge - minAge) / actualBins;
+        
+        const bins = Array(actualBins).fill(0);
+        const binLabels = Array(actualBins).fill('');
         
         ageData.forEach(age => {
-            const binIndex = Math.floor(age / binSize);
-            if (binIndex < bins.length) {
-                bins[binIndex]++;
-            }
+            const binIndex = Math.min(Math.floor((age - minAge) / binSize), actualBins - 1);
+            bins[binIndex]++;
         });
         
-        const binLabels = Array.from({length: bins.length}, (_, i) => 
-            `${i * binSize}-${(i + 1) * binSize}`
-        );
+        // Create labels for bins
+        for (let i = 0; i < actualBins; i++) {
+            const start = minAge + i * binSize;
+            const end = minAge + (i + 1) * binSize;
+            binLabels[i] = `${start.toFixed(0)}-${end.toFixed(0)}`;
+        }
         
-        if (charts.mainChart) charts.mainChart.destroy();
+        // Destroy existing chart
+        if (charts.mainChart) {
+            charts.mainChart.destroy();
+        }
         
+        // Create new chart
         charts.mainChart = new Chart(mainChartCtx, {
             type: 'bar',
             data: {
@@ -532,12 +859,30 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: `Age Distribution Histogram (${ageData.length} samples, ${actualBins} bins)`,
+                        font: {
+                            size: 16
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: (context) => {
+                                const count = context.parsed.y;
+                                const percentage = ((count / ageData.length) * 100).toFixed(1);
+                                return `Count: ${count} (${percentage}%)`;
+                            }
+                        }
+                    }
+                },
                 scales: {
                     y: {
                         beginAtZero: true,
                         title: {
                             display: true,
-                            text: 'Count'
+                            text: 'Frequency'
                         }
                     },
                     x: {
@@ -546,45 +891,85 @@ document.addEventListener('DOMContentLoaded', () => {
                             text: 'Age Range'
                         }
                     }
-                },
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Age Distribution Histogram'
-                    }
                 }
             }
         });
+        
+        // Store visualization data
+        analysisResults.visualizations.histograms = {
+            feature: 'Age',
+            data: ageData,
+            bins: bins,
+            binLabels: binLabels,
+            statistics: {
+                mean: parseFloat((ageData.reduce((a, b) => a + b, 0) / ageData.length).toFixed(2)),
+                median: parseFloat(sortedAge[Math.floor(sortedAge.length / 2)].toFixed(2)),
+                min: minAge,
+                max: maxAge,
+                count: ageData.length
+            },
+            type: 'histogram'
+        };
     }
     
     function createCorrelationHeatmap() {
-        if (!trainData) return;
+        if (!trainData || trainData.length === 0) {
+            showAlert(loadAlert, 'Please load train data first', 'error');
+            return;
+        }
         
-        // Calculate correlations between numeric features
-        const numericFeatures = DATASET_SCHEMA.numericFeatures.filter(feature => 
-            feature !== DATASET_SCHEMA.identifier
-        );
-        
-        const correlationMatrix = [];
-        const labels = [...numericFeatures, DATASET_SCHEMA.target];
+        // Prepare numeric features for correlation
+        const numericFeatures = ['Age', 'Fare', 'SibSp', 'Parch', DATASET_SCHEMA.target];
+        const validFeatures = numericFeatures.filter(feature => {
+            if (feature === DATASET_SCHEMA.target) {
+                return trainData[0].hasOwnProperty(feature);
+            }
+            return true;
+        });
         
         // Prepare data matrix
         const dataMatrix = [];
-        trainData.forEach(row => {
-            const values = [];
-            labels.forEach(label => {
-                values.push(row[label]);
-            });
-            // Only include rows with all numeric values
-            if (values.every(v => v !== null && !isNaN(v))) {
-                dataMatrix.push(values);
-            }
+        const validIndices = [];
+        
+        // First pass: collect all data
+        const featureData = validFeatures.map(feature => {
+            return trainData.map(row => row[feature]);
         });
         
-        // Calculate correlation for each pair
-        labels.forEach((_, i) => {
+        // Find rows with complete data
+        const n = trainData.length;
+        for (let i = 0; i < n; i++) {
+            let valid = true;
+            for (let j = 0; j < validFeatures.length; j++) {
+                const val = featureData[j][i];
+                if (val === null || val === undefined || isNaN(val)) {
+                    valid = false;
+                    break;
+                }
+            }
+            if (valid) {
+                validIndices.push(i);
+            }
+        }
+        
+        if (validIndices.length < 2) {
+            showAlert(loadAlert, 'Insufficient complete data for correlation analysis', 'warning');
+            return;
+        }
+        
+        // Build data matrix with complete rows only
+        validIndices.forEach(idx => {
+            const row = validFeatures.map((_, j) => featureData[j][idx]);
+            dataMatrix.push(row);
+        });
+        
+        // Calculate correlation matrix
+        const correlationMatrix = [];
+        const m = validFeatures.length;
+        
+        for (let i = 0; i < m; i++) {
             correlationMatrix[i] = [];
-            labels.forEach((_, j) => {
+            for (let j = 0; j < m; j++) {
                 if (i === j) {
                     correlationMatrix[i][j] = 1;
                 } else {
@@ -592,59 +977,81 @@ document.addEventListener('DOMContentLoaded', () => {
                     const y = dataMatrix.map(row => row[j]);
                     correlationMatrix[i][j] = pearsonCorrelation(x, y);
                 }
-            });
-        });
+            }
+        }
         
-        // Create heatmap
-        if (charts.mainChart) charts.mainChart.destroy();
+        // Prepare data for chart
+        const dataPoints = [];
+        for (let i = 0; i < m; i++) {
+            for (let j = 0; j < m; j++) {
+                dataPoints.push({
+                    x: j,
+                    y: i,
+                    v: correlationMatrix[i][j]
+                });
+            }
+        }
         
+        // Destroy existing chart
+        if (charts.mainChart) {
+            charts.mainChart.destroy();
+        }
+        
+        // Create heatmap chart
         charts.mainChart = new Chart(mainChartCtx, {
             type: 'matrix',
             data: {
                 datasets: [{
-                    label: 'Correlation Matrix',
-                    data: correlationMatrix.flatMap((row, i) => 
-                        row.map((value, j) => ({
-                            x: j,
-                            y: i,
-                            v: value
-                        }))
-                    ),
+                    label: 'Correlation',
+                    data: dataPoints,
                     backgroundColor: (ctx) => {
                         const value = ctx.dataset.data[ctx.dataIndex].v;
-                        const alpha = Math.abs(value);
-                        return value >= 0 
-                            ? `rgba(46, 204, 113, ${alpha})`
-                            : `rgba(231, 76, 60, ${alpha})`;
+                        const alpha = Math.min(Math.abs(value) * 1.5, 1);
+                        
+                        if (value > 0) {
+                            return `rgba(46, 204, 113, ${alpha})`;
+                        } else if (value < 0) {
+                            return `rgba(231, 76, 60, ${alpha})`;
+                        } else {
+                            return 'rgba(149, 165, 166, 0.5)';
+                        }
                     },
-                    borderWidth: 1,
                     borderColor: '#fff',
-                    width: ({chart}) => (chart.chartArea || {}).width / labels.length - 1,
-                    height: ({chart}) => (chart.chartArea || {}).height / labels.length - 1
+                    borderWidth: 1,
+                    width: ({chart}) => (chart.chartArea || {}).width / m - 1,
+                    height: ({chart}) => (chart.chartArea || {}).height / m - 1
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
+                    title: {
+                        display: true,
+                        text: 'Correlation Heatmap',
+                        font: {
+                            size: 16
+                        }
+                    },
                     tooltip: {
                         callbacks: {
                             label: (ctx) => {
                                 const data = ctx.dataset.data[ctx.dataIndex];
-                                return `Correlation: ${data.v.toFixed(3)}`;
+                                const xLabel = validFeatures[data.x];
+                                const yLabel = validFeatures[data.y];
+                                return `${yLabel} ↔ ${xLabel}: ${data.v.toFixed(3)}`;
                             }
                         }
                     },
-                    title: {
-                        display: true,
-                        text: 'Correlation Heatmap'
+                    legend: {
+                        display: false
                     }
                 },
                 scales: {
                     x: {
                         ticks: {
-                            callback: (i) => labels[i],
-                            display: true
+                            display: true,
+                            callback: (value, index) => validFeatures[index]
                         },
                         grid: {
                             display: false
@@ -652,8 +1059,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     y: {
                         ticks: {
-                            callback: (i) => labels[i],
-                            display: true
+                            display: true,
+                            callback: (value, index) => validFeatures[index]
                         },
                         grid: {
                             display: false
@@ -662,10 +1069,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
+        
+        // Store visualization data
+        analysisResults.visualizations.correlation = {
+            features: validFeatures,
+            matrix: correlationMatrix,
+            completeSamples: validIndices.length,
+            type: 'heatmap'
+        };
     }
     
     function pearsonCorrelation(x, y) {
         const n = x.length;
+        if (n < 2) return 0;
+        
         const sumX = x.reduce((a, b) => a + b, 0);
         const sumY = y.reduce((a, b) => a + b, 0);
         const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
@@ -675,52 +1092,150 @@ document.addEventListener('DOMContentLoaded', () => {
         const numerator = n * sumXY - sumX * sumY;
         const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
         
-        return denominator === 0 ? 0 : numerator / denominator;
+        if (denominator === 0) return 0;
+        const correlation = numerator / denominator;
+        
+        // Handle floating point precision issues
+        return Math.max(-1, Math.min(1, correlation));
     }
     
     // ==================== EXPORT FUNCTIONS ====================
     function exportResults() {
-        if (!mergedData || !analysisResults) {
+        if (!mergedData || mergedData.length === 0) {
             showAlert(exportAlert, 'No data to export', 'error');
             return;
         }
         
+        exportBtn.disabled = true;
+        showAlert(exportAlert, 'Exporting data...', 'info');
+        
         try {
-            // Export merged data as CSV
+            // 1. Export merged data as CSV
             const csvContent = Papa.unparse(mergedData);
-            downloadFile(csvContent, 'titanic_merged_data.csv', 'text/csv');
+            downloadFile(csvContent, 'titanic_merged_dataset.csv', 'text/csv;charset=utf-8;');
             
-            // Export analysis results as JSON
+            // 2. Export analysis results as JSON
             const exportData = {
-                timestamp: new Date().toISOString(),
-                datasetInfo: {
-                    totalRows: mergedData.length,
-                    trainRows: mergedData.filter(row => row[DATASET_SCHEMA.sourceCol] === 'train').length,
-                    testRows: mergedData.filter(row => row[DATASET_SCHEMA.sourceCol] === 'test').length,
-                    features: DATASET_SCHEMA.features
+                metadata: {
+                    application: 'Titanic EDA Explorer',
+                    version: '1.0.0',
+                    exportDate: new Date().toISOString(),
+                    dataset: 'Kaggle Titanic Dataset'
                 },
-                analysis: analysisResults
+                datasetInfo: analysisResults.overview,
+                analysis: {
+                    missingValues: analysisResults.missingValues,
+                    statistics: analysisResults.statistics,
+                    visualizations: analysisResults.visualizations
+                },
+                schema: DATASET_SCHEMA
             };
             
             const jsonContent = JSON.stringify(exportData, null, 2);
-            downloadFile(jsonContent, 'titanic_eda_summary.json', 'application/json');
+            downloadFile(jsonContent, 'titanic_eda_analysis.json', 'application/json');
             
-            showAlert(exportAlert, 'Export completed successfully!', 'success');
+            // 3. Export summary report as text file
+            const summaryContent = generateSummaryReport();
+            downloadFile(summaryContent, 'titanic_summary_report.txt', 'text/plain');
+            
+            showAlert(exportAlert, '✅ Export completed! 3 files downloaded.', 'success');
+            
         } catch (error) {
-            showAlert(exportAlert, `Export error: ${error.message}`, 'error');
+            console.error('Export error:', error);
+            showAlert(exportAlert, `Export failed: ${error.message}`, 'error');
+        } finally {
+            exportBtn.disabled = false;
+            
+            // Auto-hide success message after 5 seconds
+            setTimeout(() => {
+                exportAlert.style.display = 'none';
+            }, 5000);
         }
     }
     
+    function generateSummaryReport() {
+        let report = '='.repeat(60) + '\n';
+        report += 'TITANIC DATASET EDA SUMMARY REPORT\n';
+        report += '='.repeat(60) + '\n\n';
+        
+        report += `Generated: ${new Date().toLocaleString()}\n`;
+        report += `Application: Titanic EDA Explorer\n\n`;
+        
+        // Dataset Overview
+        report += '📊 DATASET OVERVIEW\n';
+        report += '-'.repeat(40) + '\n';
+        report += `Total Rows: ${analysisResults.overview.totalRows || 0}\n`;
+        report += `Train Rows: ${analysisResults.overview.trainRows || 0}\n`;
+        report += `Test Rows: ${analysisResults.overview.testRows || 0}\n`;
+        report += `Total Columns: ${analysisResults.overview.columns || 0}\n`;
+        report += `Features Analyzed: ${analysisResults.overview.features?.join(', ') || 'None'}\n`;
+        report += `Target Variable: ${DATASET_SCHEMA.target}\n\n`;
+        
+        // Missing Values Summary
+        report += '❌ MISSING VALUES SUMMARY\n';
+        report += '-'.repeat(40) + '\n';
+        if (analysisResults.missingValues) {
+            const missingEntries = Object.entries(analysisResults.missingValues)
+                .filter(([_, data]) => data.count > 0)
+                .sort((a, b) => b[1].percentage - a[1].percentage);
+            
+            if (missingEntries.length > 0) {
+                missingEntries.forEach(([column, data]) => {
+                    report += `${column}: ${data.count} missing (${data.percentage.toFixed(2)}%)\n`;
+                });
+            } else {
+                report += 'No missing values found!\n';
+            }
+        } else {
+            report += 'Missing values analysis not run\n';
+        }
+        report += '\n';
+        
+        // Key Statistics
+        report += '📈 KEY STATISTICS\n';
+        report += '-'.repeat(40) + '\n';
+        if (analysisResults.statistics?.numeric) {
+            Object.entries(analysisResults.statistics.numeric).forEach(([feature, stats]) => {
+                report += `\n${feature}:\n`;
+                report += `  Count: ${stats.count}, Missing: ${stats.missing}\n`;
+                report += `  Mean: ${stats.mean}, Median: ${stats.median}\n`;
+                report += `  Std Dev: ${stats.stdDev}\n`;
+                report += `  Range: ${stats.min} - ${stats.max}\n`;
+            });
+        }
+        
+        // Survival Rate
+        if (trainData && trainData.length > 0) {
+            const survivedCount = trainData.filter(row => row[DATASET_SCHEMA.target] === 1).length;
+            const survivalRate = (survivedCount / trainData.length * 100).toFixed(2);
+            report += `\nSurvival Rate: ${survivalRate}% (${survivedCount}/${trainData.length})\n`;
+        }
+        
+        report += '\n' + '='.repeat(60) + '\n';
+        report += 'END OF REPORT\n';
+        report += '='.repeat(60);
+        
+        return report;
+    }
+    
     function downloadFile(content, filename, mimeType) {
-        const blob = new Blob([content], { type: mimeType });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        try {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            // Clean up URL object
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+        } catch (error) {
+            console.error('Download error:', error);
+            throw error;
+        }
     }
     
     // ==================== UTILITY FUNCTIONS ====================
@@ -728,19 +1243,50 @@ document.addEventListener('DOMContentLoaded', () => {
         alertElement.textContent = message;
         alertElement.className = `alert alert-${type}`;
         alertElement.style.display = 'block';
-        
-        // Auto-hide success messages after 5 seconds
-        if (type === 'success') {
-            setTimeout(() => {
-                alertElement.style.display = 'none';
-            }, 5000);
-        }
     }
     
-    // Initialize the application
-    console.log('Titanic EDA Explorer initialized');
-    console.log('To analyze different datasets:');
-    console.log('1. Update DATASET_SCHEMA configuration');
+    function destroyAllCharts() {
+        Object.values(charts).forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') {
+                chart.destroy();
+            }
+        });
+        charts = {};
+    }
+    
+    function resetApplication() {
+        mergedData = null;
+        trainData = null;
+        testData = null;
+        analysisResults = {
+            overview: {},
+            missingValues: {},
+            statistics: {},
+            visualizations: {}
+        };
+        
+        destroyAllCharts();
+        
+        // Clear UI elements
+        overviewStats.innerHTML = '';
+        previewTable.innerHTML = '';
+        missingValues.innerHTML = '';
+        numericStats.innerHTML = '';
+        categoricalStats.innerHTML = '';
+        
+        // Clear alerts
+        loadAlert.style.display = 'none';
+        exportAlert.style.display = 'none';
+    }
+    
+    // ==================== INITIALIZATION ====================
+    console.log('🚀 Titanic EDA Explorer initialized');
+    console.log('📝 To analyze different datasets:');
+    console.log('1. Update DATASET_SCHEMA configuration (lines 30-40)');
     console.log('2. Adjust feature lists for your dataset');
-    console.log('3. Update target variable if needed');
+    console.log('3. Update target variable if different');
+    console.log('4. Update column exclusions if needed');
+    
+    // Display initial instructions
+    showAlert(loadAlert, '📁 Please upload train.csv and test.csv files from Kaggle Titanic dataset', 'info');
 });
