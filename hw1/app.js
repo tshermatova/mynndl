@@ -409,6 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
             col !== DATASET_SCHEMA.identifier
         );
         
+        // Numeric statistics
         const numericStatsResult = {};
         numericColumns.forEach(feature => {
             const values = trainData
@@ -437,9 +438,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     range: parseFloat((Math.max(...values) - Math.min(...values)).toFixed(4)),
                     sum: parseFloat(sum.toFixed(4))
                 };
+            } else {
+                numericStatsResult[feature] = {
+                    count: 0,
+                    missing: trainData.length,
+                    mean: 0,
+                    median: 0,
+                    stdDev: 0,
+                    min: 0,
+                    max: 0,
+                    range: 0,
+                    sum: 0
+                };
             }
         });
         
+        // Categorical statistics
         const categoricalStatsResult = {};
         categoricalColumns.forEach(feature => {
             const valueCounts = {};
@@ -462,18 +476,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 .map(([value, count]) => ({
                     value,
                     count,
-                    percentage: parseFloat((count / totalCount * 100).toFixed(2))
+                    percentage: totalCount > 0 ? parseFloat((count / totalCount * 100).toFixed(2)) : 0
                 }));
             
             categoricalStatsResult[feature] = {
                 uniqueValues: Object.keys(valueCounts).length,
                 missing: missingCount,
-                missingPercentage: parseFloat((missingCount / totalCount * 100).toFixed(2)),
+                missingPercentage: totalCount > 0 ? parseFloat((missingCount / totalCount * 100).toFixed(2)) : 0,
                 valueCounts: sortedCounts,
                 mostCommon: sortedCounts.length > 0 ? sortedCounts[0] : null
             };
         });
         
+        // Group statistics by survival
         const groupedStats = {};
         if (trainData.some(row => row[DATASET_SCHEMA.target] !== undefined)) {
             const targetValues = [0, 1];
@@ -501,7 +516,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 groupedStats[`${DATASET_SCHEMA.target}=${targetValue}`] = {
                     count: subset.length,
-                    percentage: parseFloat((subset.length / trainData.length * 100).toFixed(2)),
+                    percentage: trainData.length > 0 ? parseFloat((subset.length / trainData.length * 100).toFixed(2)) : 0,
                     stats: groupStats
                 };
             });
@@ -522,6 +537,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function updateStatisticsUI(numericStats, categoricalStats, groupedStats) {
+        // Clear previous content
+        numericStats.innerHTML = '';
+        categoricalStats.innerHTML = '';
+        
+        // Display numeric statistics
         if (Object.keys(numericStats).length === 0) {
             numericStats.innerHTML = '<p>No numeric features found</p>';
         } else {
@@ -545,10 +565,12 @@ document.addEventListener('DOMContentLoaded', () => {
             numericStats.innerHTML = numericHTML;
         }
         
+        // Display categorical statistics
         if (Object.keys(categoricalStats).length === 0) {
             categoricalStats.innerHTML = '<p>No categorical features found</p>';
         } else {
             let categoricalHTML = '<h3>📊 Categorical Features Summary</h3>';
+            
             Object.entries(categoricalStats).forEach(([feature, stats]) => {
                 categoricalHTML += `
                     <div style="margin-bottom: 20px;">
@@ -560,6 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="stats-grid" style="margin-top: 10px;">
                 `;
                 
+                // Display top 6 values
                 stats.valueCounts.slice(0, 6).forEach(item => {
                     categoricalHTML += `
                         <div class="stat-card" style="border-left-color: ${COLORS.info}">
@@ -570,6 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                 });
                 
+                // Show "more" if there are additional values
                 if (stats.valueCounts.length > 6) {
                     categoricalHTML += `
                         <div class="stat-card" style="border-left-color: ${COLORS.light}">
@@ -578,6 +602,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     `;
                 }
                 
+                // Show missing values
                 if (stats.missing > 0) {
                     categoricalHTML += `
                         <div class="stat-card" style="border-left-color: ${COLORS.danger}">
@@ -591,16 +616,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 categoricalHTML += '</div></div>';
             });
             
+            // Display survival statistics if available
             if (Object.keys(groupedStats).length > 0) {
-                categoricalHTML += '<h3>🎯 Survival Statistics</h3>';
-                
                 const totalTrain = trainData.length;
                 const survived = trainData.filter(row => row[DATASET_SCHEMA.target] === 1).length;
                 const died = trainData.filter(row => row[DATASET_SCHEMA.target] === 0).length;
-                const survivalRate = ((survived / totalTrain) * 100).toFixed(2);
-                const deathRate = ((died / totalTrain) * 100).toFixed(2);
+                const survivalRate = totalTrain > 0 ? ((survived / totalTrain) * 100).toFixed(2) : '0.00';
+                const deathRate = totalTrain > 0 ? ((died / totalTrain) * 100).toFixed(2) : '0.00';
                 
                 categoricalHTML += `
+                    <h3>🎯 Survival Statistics</h3>
                     <div style="display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap;">
                         <div class="stat-card" style="border-left-color: ${COLORS.success}; flex: 1;">
                             <div class="stat-title">✅ Survived</div>
@@ -615,6 +640,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
                 
+                // Display grouped statistics
                 Object.entries(groupedStats).forEach(([groupName, groupData]) => {
                     const isSurvived = groupName.includes('1');
                     const status = isSurvived ? 'Survived' : 'Died';
@@ -860,63 +886,34 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Prepare data: Convert categorical features to numeric
-        const features = DATASET_SCHEMA.numericFeatures.slice(); // Start with numeric features
+        // Prepare numeric features for correlation
+        const numericFeatures = DATASET_SCHEMA.numericFeatures;
+        const allFeatures = [...numericFeatures, DATASET_SCHEMA.target];
         
-        // Add encoded categorical features
-        const encodedData = [];
-        const validIndices = [];
-        
-        // First, prepare all data including encoding categorical features
+        // Collect valid data
+        const dataMatrix = [];
         for (let i = 0; i < trainData.length; i++) {
             const row = trainData[i];
-            const dataPoint = [];
+            const values = [];
             let valid = true;
             
-            // Add numeric features
-            DATASET_SCHEMA.numericFeatures.forEach(feature => {
+            // Check if all required features are valid numbers
+            for (const feature of allFeatures) {
                 const value = row[feature];
-                if (value === null || value === undefined || isNaN(value)) {
+                if (value === null || value === undefined || isNaN(value) || typeof value !== 'number') {
                     valid = false;
-                } else {
-                    dataPoint.push(value);
+                    break;
                 }
-            });
-            
-            // Add Fare (important for correlation)
-            if (row.Fare !== null && !isNaN(row.Fare)) {
-                dataPoint.push(row.Fare);
-                if (!features.includes('Fare')) features.push('Fare');
-            } else {
-                valid = false;
+                values.push(value);
             }
             
-            // Add Age (important for correlation)
-            if (row.Age !== null && !isNaN(row.Age)) {
-                dataPoint.push(row.Age);
-                if (!features.includes('Age')) features.push('Age');
-            } else {
-                valid = false;
-            }
-            
-            // Add target variable
-            if (row[DATASET_SCHEMA.target] !== null && row[DATASET_SCHEMA.target] !== undefined) {
-                dataPoint.push(row[DATASET_SCHEMA.target]);
-            } else {
-                valid = false;
-            }
-            
-            if (valid && dataPoint.length === features.length + 1) { // +1 for target
-                encodedData.push(dataPoint);
-                validIndices.push(i);
+            if (valid && values.length === allFeatures.length) {
+                dataMatrix.push(values);
             }
         }
         
-        // Add target to features list for labeling
-        const allFeatures = [...features, DATASET_SCHEMA.target];
-        
-        if (validIndices.length < 10) {
-            showAlert(loadAlert, `Insufficient complete data for correlation analysis (only ${validIndices.length} complete rows)`, 'warning');
+        if (dataMatrix.length < 10) {
+            showAlert(loadAlert, `Insufficient complete data for correlation analysis (need at least 10 complete rows, got ${dataMatrix.length})`, 'warning');
             return;
         }
         
@@ -928,20 +925,20 @@ document.addEventListener('DOMContentLoaded', () => {
             correlationMatrix[i] = [];
             for (let j = 0; j < n; j++) {
                 if (i === j) {
-                    correlationMatrix[i][j] = 1;
+                    correlationMatrix[i][j] = 1.0;
                 } else {
-                    const x = encodedData.map(row => row[i]);
-                    const y = encodedData.map(row => row[j]);
+                    const x = dataMatrix.map(row => row[i]);
+                    const y = dataMatrix.map(row => row[j]);
                     correlationMatrix[i][j] = calculatePearsonCorrelation(x, y);
                 }
             }
         }
         
-        // Store for analysis
+        // Store insights
         analysisResults.correlationInsights = {
             matrix: correlationMatrix,
             features: allFeatures,
-            sampleSize: validIndices.length,
+            sampleSize: dataMatrix.length,
             correlationsWithTarget: {}
         };
         
@@ -949,27 +946,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetIndex = allFeatures.indexOf(DATASET_SCHEMA.target);
         for (let i = 0; i < n; i++) {
             if (i !== targetIndex) {
+                const corr = correlationMatrix[targetIndex][i];
                 analysisResults.correlationInsights.correlationsWithTarget[allFeatures[i]] = {
-                    correlation: correlationMatrix[targetIndex][i],
-                    strength: getCorrelationStrength(correlationMatrix[targetIndex][i]),
-                    direction: correlationMatrix[targetIndex][i] > 0 ? 'positive' : 'negative'
+                    correlation: corr,
+                    strength: getCorrelationStrength(corr),
+                    direction: corr > 0 ? 'positive' : 'negative'
                 };
             }
         }
         
-        // Prepare data for heatmap
+        // Prepare data for Chart.js matrix
         const dataPoints = [];
         for (let i = 0; i < n; i++) {
             for (let j = 0; j < n; j++) {
                 dataPoints.push({
-                    x: j,
-                    y: i,
-                    v: correlationMatrix[i][j]
+                    row: i,
+                    column: j,
+                    value: correlationMatrix[i][j]
                 });
             }
         }
         
-        // Clear previous chart
+        // Destroy previous chart
         if (charts.mainChart) {
             charts.mainChart.destroy();
         }
@@ -979,36 +977,24 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'matrix',
             data: {
                 datasets: [{
-                    label: 'Correlation',
-                    data: dataPoints,
-                    backgroundColor: (ctx) => {
-                        const value = ctx.dataset.data[ctx.dataIndex].v;
-                        const absValue = Math.abs(value);
-                        
-                        // Color coding based on correlation strength
-                        if (value > 0) {
-                            // Positive correlation - green shades
-                            const intensity = Math.min(absValue * 1.5, 1);
-                            return `rgba(46, 204, 113, ${intensity})`;
-                        } else if (value < 0) {
-                            // Negative correlation - red shades
-                            const intensity = Math.min(absValue * 1.5, 1);
-                            return `rgba(231, 76, 60, ${intensity})`;
-                        } else {
-                            // Zero correlation
-                            return 'rgba(149, 165, 166, 0.3)';
-                        }
+                    label: 'Correlation Matrix',
+                    data: dataPoints.map(point => ({
+                        x: point.column,
+                        y: point.row,
+                        v: point.value
+                    })),
+                    backgroundColor: (context) => {
+                        const value = context.dataset.data[context.dataIndex].v;
+                        if (value >= 0.7) return `rgba(46, 204, 113, ${value})`;
+                        if (value >= 0.3) return `rgba(52, 152, 219, ${value})`;
+                        if (value >= 0) return `rgba(149, 165, 166, ${value})`;
+                        if (value >= -0.3) return `rgba(241, 196, 15, ${Math.abs(value)})`;
+                        return `rgba(231, 76, 60, ${Math.abs(value)})`;
                     },
-                    borderColor: 'white',
                     borderWidth: 1,
-                    width: ({chart}) => {
-                        const chartArea = chart.chartArea;
-                        return chartArea ? (chartArea.width / n) - 1 : 20;
-                    },
-                    height: ({chart}) => {
-                        const chartArea = chart.chartArea;
-                        return chartArea ? (chartArea.height / n) - 1 : 20;
-                    }
+                    borderColor: '#fff',
+                    width: ({chart}) => (chart.chartArea.width / n) - 1,
+                    height: ({chart}) => (chart.chartArea.height / n) - 1
                 }]
             },
             options: {
@@ -1017,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 plugins: {
                     title: {
                         display: true,
-                        text: 'Correlation Heatmap (Numeric Features vs Survival)',
+                        text: `Correlation Heatmap (${dataMatrix.length} complete samples)`,
                         font: { size: 16 }
                     },
                     tooltip: {
@@ -1026,38 +1012,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const data = context.dataset.data[context.dataIndex];
                                 const rowFeature = allFeatures[data.y];
                                 const colFeature = allFeatures[data.x];
-                                const correlation = data.v;
-                                
-                                let strength = getCorrelationStrength(correlation);
-                                let direction = correlation > 0 ? 'positive' : correlation < 0 ? 'negative' : 'none';
-                                let interpretation = '';
-                                
-                                if (rowFeature === DATASET_SCHEMA.target || colFeature === DATASET_SCHEMA.target) {
-                                    const feature = rowFeature === DATASET_SCHEMA.target ? colFeature : rowFeature;
-                                    const impact = correlation > 0 ? 'increases survival' : correlation < 0 ? 'decreases survival' : 'no impact';
-                                    interpretation = `${feature} ${impact} (${direction} correlation)`;
-                                } else {
-                                    interpretation = `${direction} relationship`;
-                                }
-                                
-                                return `${rowFeature} ↔ ${colFeature}: ${correlation.toFixed(3)} (${strength}, ${interpretation})`;
+                                return `${rowFeature} ↔ ${colFeature}: ${data.v.toFixed(3)}`;
                             }
                         }
-                    },
-                    legend: {
-                        display: false
                     }
                 },
                 scales: {
                     x: {
                         ticks: {
-                            display: true,
                             callback: function(value, index) {
-                                return allFeatures[index] || '';
+                                return allFeatures[index];
                             },
-                            font: {
-                                size: 11
-                            }
+                            maxRotation: 45
                         },
                         grid: {
                             display: false
@@ -1065,12 +1031,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     },
                     y: {
                         ticks: {
-                            display: true,
                             callback: function(value, index) {
-                                return allFeatures[index] || '';
-                            },
-                            font: {
-                                size: 11
+                                return allFeatures[index];
                             }
                         },
                         grid: {
@@ -1082,7 +1044,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         // Display correlation insights
-        displayCorrelationInsights(analysisResults.correlationInsights);
+        displayCorrelationInsights();
     }
     
     function calculatePearsonCorrelation(x, y) {
@@ -1092,13 +1054,11 @@ document.addEventListener('DOMContentLoaded', () => {
         let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
         
         for (let i = 0; i < n; i++) {
-            const xi = x[i];
-            const yi = y[i];
-            sumX += xi;
-            sumY += yi;
-            sumXY += xi * yi;
-            sumX2 += xi * xi;
-            sumY2 += yi * yi;
+            sumX += x[i];
+            sumY += y[i];
+            sumXY += x[i] * y[i];
+            sumX2 += x[i] * x[i];
+            sumY2 += y[i] * y[i];
         }
         
         const numerator = n * sumXY - sumX * sumY;
@@ -1115,19 +1075,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (absCorr >= 0.5) return 'Strong';
         if (absCorr >= 0.3) return 'Moderate';
         if (absCorr >= 0.1) return 'Weak';
-        return 'Very Weak/None';
+        return 'Very Weak';
     }
     
-    function displayCorrelationInsights(insights) {
+    function displayCorrelationInsights() {
+        const insights = analysisResults.correlationInsights;
+        if (!insights || !insights.correlationsWithTarget) return;
+        
         // Clear previous insights
-        const existingInsights = document.querySelector('.correlation-insights-container');
+        const existingInsights = document.querySelector('.correlation-insights');
         if (existingInsights) {
             existingInsights.remove();
         }
         
+        // Sort correlations by value (most negative first)
+        const correlations = Object.entries(insights.correlationsWithTarget)
+            .map(([feature, data]) => ({
+                feature,
+                correlation: data.correlation,
+                strength: data.strength,
+                direction: data.direction
+            }))
+            .sort((a, b) => a.correlation - b.correlation);
+        
         // Create insights container
         const insightsContainer = document.createElement('div');
-        insightsContainer.className = 'correlation-insights-container';
+        insightsContainer.className = 'correlation-insights';
         insightsContainer.style.cssText = `
             margin-top: 25px;
             padding: 20px;
@@ -1139,50 +1112,36 @@ document.addEventListener('DOMContentLoaded', () => {
         
         let html = `
             <h3 style="color: ${COLORS.dark}; margin-bottom: 20px; border-bottom: 2px solid ${COLORS.info}; padding-bottom: 10px;">
-                🔍 CORRELATION ANALYSIS - DEATH FACTOR INSIGHTS
+                🔍 CORRELATION ANALYSIS RESULTS
             </h3>
             
-            <div style="margin-bottom: 20px;">
-                <h4 style="color: ${COLORS.dark}; margin-bottom: 10px;">📊 Correlation with Survival (Target Variable)</h4>
-                <div style="display: grid; gap: 12px;">
+            <div style="margin-bottom: 25px;">
+                <h4 style="color: ${COLORS.dark}; margin-bottom: 15px;">📊 Correlation with Survival</h4>
+                <div style="display: grid; gap: 10px;">
         `;
         
-        // Sort features by absolute correlation with target
-        const correlations = [];
-        for (const [feature, data] of Object.entries(insights.correlationsWithTarget)) {
-            correlations.push({
-                feature,
-                correlation: data.correlation,
-                strength: data.strength,
-                direction: data.direction
-            });
-        }
-        
-        correlations.sort((a, b) => Math.abs(b.correlation) - Math.abs(a.correlation));
-        
-        // Display top correlations
+        // Display all correlations
         correlations.forEach(item => {
-            const isPositive = item.correlation > 0;
-            const color = isPositive ? COLORS.success : COLORS.danger;
-            const icon = isPositive ? '📈' : '📉';
-            const impact = isPositive ? 'INCREASES survival chances' : 'DECREASES survival chances';
+            const isNegative = item.correlation < 0;
+            const color = isNegative ? COLORS.danger : COLORS.success;
+            const icon = isNegative ? '📉' : '📈';
+            const impact = isNegative ? 'Decreases survival' : 'Increases survival';
             
             html += `
                 <div style="display: flex; justify-content: space-between; align-items: center; 
-                            padding: 10px 15px; background: white; border-radius: 8px; 
+                            padding: 12px 15px; background: white; border-radius: 8px; 
                             border-left: 4px solid ${color};">
-                    <div>
-                        <div style="font-weight: 600; color: ${COLORS.dark};">${item.feature}</div>
-                        <div style="font-size: 0.9rem; color: #666; margin-top: 2px;">
-                            ${impact}
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: ${COLORS.dark}; margin-bottom: 4px;">
+                            ${item.feature}
+                        </div>
+                        <div style="font-size: 0.9rem; color: #666;">
+                            ${impact} • ${item.strength} ${item.direction} correlation
                         </div>
                     </div>
-                    <div>
-                        <span style="font-weight: bold; font-size: 1.1rem; color: ${color};">
+                    <div style="text-align: right;">
+                        <div style="font-size: 1.2rem; font-weight: bold; color: ${color};">
                             ${icon} ${item.correlation.toFixed(3)}
-                        </span>
-                        <div style="font-size: 0.8rem; color: #7f8c8d; text-align: right;">
-                            ${item.strength} (${item.direction})
                         </div>
                     </div>
                 </div>
@@ -1191,132 +1150,109 @@ document.addEventListener('DOMContentLoaded', () => {
         
         html += `</div></div>`;
         
-        // Identify main death factors
+        // Find main death factor (most negative correlation)
         const negativeCorrelations = correlations.filter(c => c.correlation < 0);
-        const mainDeathFactors = negativeCorrelations.slice(0, 3);
-        
-        if (mainDeathFactors.length > 0) {
-            html += `
-                <div style="margin-bottom: 20px;">
-                    <h4 style="color: ${COLORS.danger}; margin-bottom: 15px;">🚨 MAIN FACTORS CONTRIBUTING TO DEATH</h4>
-                    <div style="display: grid; gap: 15px;">
-            `;
-            
-            mainDeathFactors.forEach((factor, index) => {
-                const strength = factor.strength.toLowerCase();
-                const riskLevel = Math.abs(factor.correlation) > 0.3 ? '🚨 HIGH RISK' : 
-                                Math.abs(factor.correlation) > 0.2 ? '⚠️ MODERATE RISK' : '📊 LOW RISK';
-                
-                html += `
-                    <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid ${COLORS.danger};">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                            <div>
-                                <span style="font-weight: bold; color: ${COLORS.danger}; font-size: 1.1rem;">
-                                    ${index + 1}. ${factor.feature}
-                                </span>
-                                <div style="color: #666; font-size: 0.9rem; margin-top: 3px;">
-                                    Correlation: ${factor.correlation.toFixed(3)} (${strength} negative)
-                                </div>
-                            </div>
-                            <div style="background: #ffeaea; padding: 4px 10px; border-radius: 4px; font-weight: 600; color: ${COLORS.danger};">
-                                ${riskLevel}
-                            </div>
-                        </div>
-                        <div style="color: #444; font-size: 0.95rem;">
-                            ${getFactorInterpretation(factor.feature, factor.correlation)}
-                        </div>
-                    </div>
-                `;
-            });
-            
-            html += `</div></div>`;
-        }
-        
-        // Positive correlations (factors that increase survival)
-        const positiveCorrelations = correlations.filter(c => c.correlation > 0);
-        const mainSurvivalFactors = positiveCorrelations.slice(0, 3);
-        
-        if (mainSurvivalFactors.length > 0) {
-            html += `
-                <div style="margin-bottom: 20px;">
-                    <h4 style="color: ${COLORS.success}; margin-bottom: 15px;">✅ FACTORS INCREASING SURVIVAL</h4>
-                    <div style="display: grid; gap: 15px;">
-            `;
-            
-            mainSurvivalFactors.forEach((factor, index) => {
-                html += `
-                    <div style="background: white; padding: 15px; border-radius: 8px; border: 2px solid ${COLORS.success};">
-                        <div style="display: flex; justify-content: space-between; align-items: start;">
-                            <div>
-                                <span style="font-weight: bold; color: ${COLORS.success};">
-                                    ${factor.feature}
-                                </span>
-                                <div style="color: #666; font-size: 0.9rem; margin-top: 3px;">
-                                    Correlation: +${factor.correlation.toFixed(3)} (${factor.strength.toLowerCase()} positive)
-                                </div>
-                            </div>
-                        </div>
-                        <div style="color: #444; font-size: 0.95rem; margin-top: 8px;">
-                            ${getFactorInterpretation(factor.feature, factor.correlation)}
-                        </div>
-                    </div>
-                `;
-            });
-            
-            html += `</div></div>`;
-        }
-        
-        // Main conclusion
-        if (mainDeathFactors.length > 0) {
-            const mainFactor = mainDeathFactors[0];
-            const correlationValue = Math.abs(mainFactor.correlation);
+        if (negativeCorrelations.length > 0) {
+            const mainDeathFactor = negativeCorrelations[0];
             
             html += `
-                <div style="margin-top: 25px; padding: 20px; background: ${COLORS.danger}15; border-radius: 10px; border: 2px solid ${COLORS.danger};">
-                    <h4 style="color: ${COLORS.danger}; margin-bottom: 10px; display: flex; align-items: center;">
-                        🎯 PRIMARY CONCLUSION: MAIN DEATH FACTOR IDENTIFIED
+                <div style="margin-bottom: 25px; padding: 20px; background: ${COLORS.danger}15; 
+                            border-radius: 10px; border: 2px solid ${COLORS.danger};">
+                    <h4 style="color: ${COLORS.danger}; margin-bottom: 15px; display: flex; align-items: center;">
+                        🎯 CONCLUSION: MAIN REASON FOR DEATH
                     </h4>
-                    <div style="color: ${COLORS.dark}; font-size: 1.1rem; font-weight: 500; margin-bottom: 10px;">
-                        Based on correlation analysis, the strongest predictor of death is:
-                    </div>
-                    <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                        <div style="font-size: 1.3rem; font-weight: bold; color: ${COLORS.danger}; text-align: center; margin-bottom: 8px;">
-                            "${mainFactor.feature}"
+                    
+                    <div style="display: flex; align-items: center; gap: 20px; margin-bottom: 15px;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 1.3rem; font-weight: bold; color: ${COLORS.danger};">
+                                ${mainDeathFactor.feature}
+                            </div>
+                            <div style="color: #666; margin-top: 5px;">
+                                Correlation with death: ${mainDeathFactor.correlation.toFixed(3)}
+                            </div>
                         </div>
-                        <div style="text-align: center; color: #666;">
-                            Correlation with death: ${mainFactor.correlation.toFixed(3)} 
-                            <span style="color: ${COLORS.danger};">(Negative ${getCorrelationStrength(correlationValue).toLowerCase()})</span>
+                        <div style="font-size: 2rem; color: ${COLORS.danger};">
+                            📉
                         </div>
                     </div>
-                    <div style="color: #444; line-height: 1.5;">
-                        <strong>Interpretation:</strong> ${getMainFactorInterpretation(mainFactor.feature, mainFactor.correlation)}
+                    
+                    <div style="color: ${COLORS.dark}; line-height: 1.6;">
+                        <strong>Analysis:</strong> ${getDeathFactorInterpretation(mainDeathFactor.feature, mainDeathFactor.correlation)}
                     </div>
+                    
                     <div style="margin-top: 15px; padding: 12px; background: white; border-radius: 6px; border-left: 4px solid ${COLORS.warning};">
                         <strong>📈 Statistical Significance:</strong> 
-                        ${correlationValue > 0.3 ? 'This correlation is statistically significant and indicates a strong relationship.' :
-                          correlationValue > 0.2 ? 'This correlation is moderately significant.' :
-                          'While this is the strongest negative correlation found, it represents a weak relationship.'}
-                    </div>
-                </div>
-            `;
-        } else {
-            html += `
-                <div style="margin-top: 25px; padding: 20px; background: ${COLORS.warning}15; border-radius: 10px; border: 2px solid ${COLORS.warning};">
-                    <h4 style="color: ${COLORS.warning}; margin-bottom: 10px;">⚠️ NO STRONG CORRELATIONS DETECTED</h4>
-                    <div style="color: #444;">
-                        The correlation analysis did not reveal any strong linear relationships between 
-                        numeric features and survival. This suggests that death factors may be more complex 
-                        or involve categorical variables (like Sex, Pclass) that require different analysis methods.
+                        This ${mainDeathFactor.strength.toLowerCase()} negative correlation indicates that 
+                        ${mainDeathFactor.feature} has a ${Math.abs(mainDeathFactor.correlation) > 0.3 ? 'significant' : 'moderate'} 
+                        relationship with mortality rates.
                     </div>
                 </div>
             `;
         }
         
-        // Data quality note
+        // Display correlation matrix table
         html += `
-            <div style="margin-top: 15px; padding: 10px; background: #f0f7ff; border-radius: 6px; font-size: 0.9rem; color: #666;">
-                <strong>Note:</strong> Analysis based on ${insights.sampleSize} complete data samples. 
-                Correlation measures linear relationships only.
+            <div style="margin-bottom: 20px;">
+                <h4 style="color: ${COLORS.dark}; margin-bottom: 15px;">📋 Correlation Matrix</h4>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; background: white;">
+                        <thead>
+                            <tr>
+                                <th style="padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; text-align: center;">Feature</th>
+        `;
+        
+        // Header row
+        insights.features.forEach(feature => {
+            html += `<th style="padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; text-align: center; min-width: 80px;">${feature}</th>`;
+        });
+        
+        html += `</tr></thead><tbody>`;
+        
+        // Data rows
+        for (let i = 0; i < insights.features.length; i++) {
+            html += `<tr><td style="padding: 10px; background: #f8f9fa; border: 1px solid #dee2e6; font-weight: 600;">${insights.features[i]}</td>`;
+            
+            for (let j = 0; j < insights.features.length; j++) {
+                const corr = insights.matrix[i][j];
+                const bgColor = corr >= 0.7 ? '#d4edda' : 
+                              corr >= 0.3 ? '#d1ecf1' : 
+                              corr >= 0 ? '#f8f9fa' : 
+                              corr >= -0.3 ? '#fff3cd' : '#f8d7da';
+                const textColor = corr >= 0.7 ? '#155724' : 
+                                 corr >= 0.3 ? '#0c5460' : 
+                                 corr >= 0 ? '#6c757d' : 
+                                 corr >= -0.3 ? '#856404' : '#721c24';
+                
+                html += `<td style="padding: 10px; border: 1px solid #dee2e6; text-align: center; background: ${bgColor}; color: ${textColor}; font-weight: ${Math.abs(corr) > 0.5 ? 'bold' : 'normal'};">${corr.toFixed(3)}</td>`;
+            }
+            
+            html += `</tr>`;
+        }
+        
+        html += `</tbody></table></div></div>`;
+        
+        // Legend
+        html += `
+            <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #dee2e6;">
+                <h5 style="color: ${COLORS.dark}; margin-bottom: 10px;">📖 Correlation Legend</h5>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 20px; height: 20px; background: #d4edda; border: 1px solid #c3e6cb;"></div>
+                        <span>Strong Positive (≥ 0.7)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 20px; height: 20px; background: #d1ecf1; border: 1px solid #bee5eb;"></div>
+                        <span>Moderate Positive (≥ 0.3)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 20px; height: 20px; background: #fff3cd; border: 1px solid #ffeaa7;"></div>
+                        <span>Weak Negative (≥ -0.3)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 20px; height: 20px; background: #f8d7da; border: 1px solid #f5c6cb;"></div>
+                        <span>Strong Negative (< -0.3)</span>
+                    </div>
+                </div>
             </div>
         `;
         
@@ -1327,45 +1263,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (chartContainer && chartContainer.parentNode) {
             chartContainer.parentNode.insertBefore(insightsContainer, chartContainer.nextSibling);
         } else {
-            document.querySelector('.section:nth-child(5)').appendChild(insightsContainer);
+            const visualizationSection = document.querySelector('.section:nth-child(5)');
+            if (visualizationSection) {
+                visualizationSection.appendChild(insightsContainer);
+            }
         }
     }
     
-    function getFactorInterpretation(feature, correlation) {
+    function getDeathFactorInterpretation(feature, correlation) {
         const interpretations = {
-            'Age': correlation < 0 ? 'Younger passengers had better survival chances' : 'Older passengers had better survival chances',
-            'Fare': correlation < 0 ? 'Lower fare passengers had lower survival' : 'Higher fare passengers had better survival',
-            'SibSp': correlation < 0 ? 'More siblings/spouses decreased survival' : 'More siblings/spouses increased survival',
-            'Parch': correlation < 0 ? 'More parents/children decreased survival' : 'More parents/children increased survival',
-            'Pclass': correlation < 0 ? 'Lower class (higher number) decreased survival' : 'Higher class increased survival'
-        };
-        
-        return interpretations[feature] || 
-               `A ${correlation > 0 ? 'positive' : 'negative'} correlation indicates this feature ${correlation > 0 ? 'increases' : 'decreases'} with survival.`;
-    }
-    
-    function getMainFactorInterpretation(feature, correlation) {
-        const mainInterpretations = {
-            'Age': `Age shows a ${correlation < 0 ? 'negative' : 'positive'} correlation with survival. 
-                   ${correlation < 0 ? 'Younger passengers were more likely to survive, possibly due to evacuation priorities.' : 
-                    'Older passengers showed higher survival rates.'}`,
+            'Age': `Age has a ${correlation < 0 ? 'negative' : 'positive'} correlation with survival. 
+                   ${correlation < 0 ? 'Younger passengers had better survival chances, possibly due to evacuation priorities and physical ability.' : 
+                    'Older passengers had better survival rates, which contradicts typical disaster scenarios.'}`,
             
-            'Fare': `Fare paid shows a ${correlation < 0 ? 'negative' : 'positive'} correlation. 
-                    ${correlation > 0 ? 'Passengers who paid higher fares (typically in better classes) had significantly better survival rates, indicating socioeconomic status was a key factor.' : 
-                     'Lower fare passengers had better survival, which contradicts historical records.'}`,
+            'Fare': `Fare paid shows ${correlation < 0 ? 'negative' : 'positive'} correlation. 
+                    ${correlation > 0 ? 'Passengers who paid higher fares (typically in 1st class) had significantly better survival rates, indicating socioeconomic status was a crucial factor.' : 
+                     'Lower fare passengers had better survival, which is unusual and requires further investigation.'}`,
             
             'SibSp': `Number of siblings/spouses shows ${correlation < 0 ? 'negative' : 'positive'} correlation. 
-                     ${correlation < 0 ? 'Having more siblings/spouses aboard decreased survival chances, possibly due to family evacuation challenges.' : 
+                     ${correlation < 0 ? 'Passengers with more siblings/spouses had lower survival, possibly due to complex evacuation decisions and family priorities.' : 
                       'Having more siblings/spouses increased survival chances, possibly through mutual assistance.'}`,
             
             'Parch': `Number of parents/children shows ${correlation < 0 ? 'negative' : 'positive'} correlation. 
-                     ${correlation < 0 ? 'Passengers with more dependents had lower survival, possibly due to prioritizing others.' : 
-                      'Passengers with family members had better survival, possibly through coordinated evacuation.'}`
+                     ${correlation < 0 ? 'Passengers with children or parents aboard had lower survival, likely due to prioritizing family members over self-preservation.' : 
+                      'Passengers with family had better survival, possibly through coordinated evacuation efforts.'}`
         };
         
-        return mainInterpretations[feature] || 
-               `The ${feature} feature shows the strongest negative correlation (${correlation.toFixed(3)}) with survival, 
-               making it the primary numeric predictor of death in this analysis.`;
+        return interpretations[feature] || 
+               `The ${feature} feature shows a ${Math.abs(correlation).toFixed(3)} correlation with survival, 
+               indicating it is ${Math.abs(correlation) > 0.3 ? 'a significant' : 'a moderate'} factor in determining survival outcomes.`;
     }
     
     // ==================== EXPORT FUNCTIONS ====================
@@ -1391,8 +1317,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 datasetInfo: analysisResults.overview,
                 analysis: analysisResults,
-                mainConclusion: analysisResults.correlationInsights && 
-                               analysisResults.correlationInsights.correlationsWithTarget ? 
+                mainConclusion: analysisResults.correlationInsights ? 
                     getExportConclusion(analysisResults.correlationInsights) :
                     'No correlation analysis performed'
             };
@@ -1418,27 +1343,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function getExportConclusion(insights) {
-        if (!insights.correlationsWithTarget || Object.keys(insights.correlationsWithTarget).length === 0) {
-            return 'No significant correlations found';
+        if (!insights.correlationsWithTarget) return 'No correlation analysis available';
+        
+        const correlations = Object.entries(insights.correlationsWithTarget)
+            .map(([feature, data]) => ({ feature, correlation: data.correlation }))
+            .sort((a, b) => a.correlation - b.correlation);
+        
+        if (correlations.length === 0) return 'No correlations calculated';
+        
+        const mainDeathFactor = correlations.find(c => c.correlation < 0);
+        if (mainDeathFactor) {
+            return `MAIN DEATH FACTOR: ${mainDeathFactor.feature} (correlation: ${mainDeathFactor.correlation.toFixed(3)})`;
         }
         
-        const correlations = [];
-        for (const [feature, data] of Object.entries(insights.correlationsWithTarget)) {
-            correlations.push({
-                feature,
-                correlation: data.correlation,
-                direction: data.direction
-            });
-        }
-        
-        correlations.sort((a, b) => a.correlation - b.correlation); // Sort by most negative first
-        
-        if (correlations.length > 0 && correlations[0].correlation < 0) {
-            const mainFactor = correlations[0];
-            return `MAIN DEATH FACTOR: ${mainFactor.feature} (correlation: ${mainFactor.correlation.toFixed(3)})`;
-        }
-        
-        return 'No strong negative correlations (death factors) identified';
+        return 'No negative correlations (death factors) identified';
     }
     
     function generateSummaryReport() {
@@ -1459,20 +1377,13 @@ document.addEventListener('DOMContentLoaded', () => {
         report += `Target Variable: ${DATASET_SCHEMA.target}\n\n`;
         
         if (analysisResults.correlationInsights && analysisResults.correlationInsights.correlationsWithTarget) {
-            report += '🔍 CORRELATION ANALYSIS - DEATH FACTORS\n';
+            report += '🔍 CORRELATION ANALYSIS\n';
             report += '-'.repeat(40) + '\n';
+            report += `Sample Size: ${analysisResults.correlationInsights.sampleSize || 0}\n\n`;
             
-            const correlations = [];
-            for (const [feature, data] of Object.entries(analysisResults.correlationInsights.correlationsWithTarget)) {
-                correlations.push({
-                    feature,
-                    correlation: data.correlation,
-                    strength: data.strength,
-                    direction: data.direction
-                });
-            }
-            
-            correlations.sort((a, b) => a.correlation - b.correlation); // Most negative first
+            const correlations = Object.entries(analysisResults.correlationInsights.correlationsWithTarget)
+                .map(([feature, data]) => ({ feature, correlation: data.correlation, strength: data.strength }))
+                .sort((a, b) => a.correlation - b.correlation);
             
             if (correlations.length > 0) {
                 report += 'CORRELATIONS WITH SURVIVAL:\n';
@@ -1481,29 +1392,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     report += `  ${item.feature}: ${item.correlation.toFixed(3)} (${item.strength}, ${impact})\n`;
                 });
                 
-                report += '\n';
-                
-                // Identify main death factors (negative correlations)
-                const deathFactors = correlations.filter(c => c.correlation < 0);
-                if (deathFactors.length > 0) {
-                    report += 'MAIN DEATH FACTORS (Negative Correlations):\n';
-                    deathFactors.slice(0, 3).forEach((factor, idx) => {
-                        report += `${idx + 1}. ${factor.feature}: ${factor.correlation.toFixed(3)} (${factor.strength})\n`;
-                    });
-                    
-                    const mainFactor = deathFactors[0];
-                    report += `\n🎯 PRIMARY CONCLUSION:\n`;
-                    report += `The strongest predictor of death is "${mainFactor.feature}" with a correlation of ${mainFactor.correlation.toFixed(3)}.\n`;
-                    report += `This indicates a ${mainFactor.strength.toLowerCase()} negative relationship with survival.\n`;
-                }
-                
-                // Identify survival factors (positive correlations)
-                const survivalFactors = correlations.filter(c => c.correlation > 0);
-                if (survivalFactors.length > 0) {
-                    report += '\nMAIN SURVIVAL FACTORS (Positive Correlations):\n';
-                    survivalFactors.slice(0, 3).forEach((factor, idx) => {
-                        report += `${idx + 1}. ${factor.feature}: +${factor.correlation.toFixed(3)} (${factor.strength})\n`;
-                    });
+                const negativeCorrelations = correlations.filter(c => c.correlation < 0);
+                if (negativeCorrelations.length > 0) {
+                    const mainFactor = negativeCorrelations[0];
+                    report += `\n🎯 MAIN DEATH FACTOR: ${mainFactor.feature} (correlation: ${mainFactor.correlation.toFixed(3)})\n`;
                 }
             }
             report += '\n';
@@ -1587,7 +1479,7 @@ document.addEventListener('DOMContentLoaded', () => {
         exportAlert.style.display = 'none';
         
         // Clear correlation insights
-        const existingInsights = document.querySelector('.correlation-insights-container');
+        const existingInsights = document.querySelector('.correlation-insights');
         if (existingInsights) {
             existingInsights.remove();
         }
