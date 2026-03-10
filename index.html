@@ -1,64 +1,229 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>MNIST TensorFlow.js Demo</title>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis"></script>
+<!DOCTYPE <htmlhtml>
+ <headlang="en">
+>
+  <meta charset="UTF-8" />
+  <title>MNIST TF.js (Browser-only CSV Trainer)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- TensorFlow.js and tfjs-vis CDNs -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.5.1/dist/tfjs-vis.umd.min.js"></script>
+  <style>
+    :root {
+      --gap: 12px;
+      --bg: #101418;
+      --panel: #141a20;
+      --text: #e8eef5;
+      --muted: #a6b3c2;
+      --accent: #4da3ff;
+      --ok: #1ecb5b;
+      --bad: #ef476f;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    a { color: var(--accent); }
+    h1, h2, h3 { margin: 8px 0; }
+    small { color: var(--muted); }
 
-<link rel="stylesheet" href="styles.css">
+    .app {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: var(--gap);
+      padding: var(--gap);
+      box-sizing: border-box;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid #1e2630;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .left .panel + .panel { margin-top: var(--gap); }
+    .controls .row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    label { font-weight: 600; display: block; margin-bottom: 4px; }
+    input[type="file"] {
+      width: 100%;
+      color: var(--muted);
+    }
+    .btns {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button {
+      background: #1a2330;
+      color: var(--text);
+      border: 1px solid #263141;
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: background .15s, transform .06s;
+    }
+    button:hover { background: #223047; }
+    button:active { transform: translateY(1px); }
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    .sections .section + .section { margin-top: var(--gap); }
+    .section h3 { margin-top: 0; }
+    .muted { color: var(--muted); }
+
+    #trainingLogs {
+      background: #0e141a;
+      border: 1px solid #1e2630;
+      padding: 8px;
+      height: 160px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+
+    .preview {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .preview-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .preview-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .preview-item canvas {
+      width: 112px;  /* 28 * 4 */
+      height: 112px; /* 28 * 4 */
+      image-rendering: pixelated; /* keep hard edges */
+      border: 1px solid #2a3550;
+      border-radius: 4px;
+      background: #0a0f14;
+    }
+    .pred {
+      font-weight: 700;
+    }
+    .pred.ok { color: var(--ok); }
+    .pred.bad { color: var(--bad); }
+
+    .kv {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 10px;
+      align-items: baseline;
+    }
+
+    .footer-note {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+  <body</style>
 </head>
+>
+  <div class="app">
+    <div class="left">
+      <div class="panel controls">
+        <h2>Controls</h2>
+        <div class="row">
+          <div>
+            <label for="trainCsv">Upload Train CSV (mnist_train.csv)</label>
+            <input type="file" id="trainCsv" accept=".csv,text/csv" />
+          </div>
+          <div>
+            <label for="testCsv">Upload Test CSV (mnist_test.csv)</label>
+            <input type="file" id="testCsv" accept=".csv,text/csv" />
+          </div>
+          <div class="btns">
+            <button id="btnLoadData">Load Data</button>
+            <button id="btnToggleVisor">Toggle Visor</button>
+            <button id="btnTrain" disabled>Train</button>
+            <button id="btnEvaluate" disabled>Evaluate</button>
+            <button id="btnTestFive" disabled>Test 5 Random</button>
+            <button id="btnReset">Reset</button>
+          </div>
+        </div>
 
-<body>
+        <h3>Model Save/Load (Files Only)</h3>
+        <div class="row">
+          <div class="btns">
+            <button id="btnSave" disabled>Save Model (Download)</button>
+            <button id="btnLoadModel">Load Model (From Files)</button>
+          </div>
+          <div>
+            <label for="modelJson">model.json</label>
+            <input type="file" id="modelJson" accept=".json,application/json" />
+          </div>
+          <div>
+            <label for="modelWeights">weights.bin</label>
+            <input type="file" id="modelWeights" accept=".bin,application/octet-stream" />
+          </div>
+        </div>
+        <div class="footer-note">
+          • All data stays in your browser. No network fetches or storage. <br />
+          • Use tfjs-vis visor panels for charts. <br />
+          • CSV format: label, 784 pixel values (0–255), no header.
+        </div>
+      </div>
+    </div>
 
-<h2>MNIST CNN Trainer (Browser)</h2>
+    <div class="right">
+      <div class="sections">
+        <div class="panel section">
+          <h3>Data Status</h3>
+          <div id="dataStatus" class="muted">No data loaded.</div>
+        </div>
 
-<div class="layout">
+        <div class="panel section">
+          <h3>Training Logs</h3>
+          <div id="trainingLogs"></div>
+        </div>
 
-<div class="controls">
+        <div class="panel section">
+          <h3>Metrics</h3>
+          <div class="kv">
+            <div>Overall Test Accuracy:</div>
+            <div id="overallAcc" class="muted">—</div>
+          </div>
+          <div class="footer-note">
+            Confusion matrix and per-class accuracy will appear in the tfjs-vis visor (Evaluation tab).
+          </div>
+        </div>
 
-<h3>Dataset</h3>
+        <div class="panel section preview">
+          <h3>Random 5 Preview</h3>
+          <div id="previewRow" class="preview-row"></div>
+        </div>
 
-<input type="file" id="trainFile">
-<input type="file" id="testFile">
+        <div class="panel section">
+          <h3>Model Info</h3>
+          <div id="modelInfo" class="muted">No model yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-<button id="loadBtn">Load Data</button>
-<button id="resetBtn">Reset</button>
-
-<h3>Training</h3>
-
-<button id="trainBtn">Train</button>
-<button id="evalBtn">Evaluate</button>
-<button id="testBtn">Test 5 Random</button>
-
-<h3>Model</h3>
-
-<button id="saveBtn">Save Model</button>
-
-<input type="file" id="modelJson">
-<input type="file" id="modelWeights">
-
-<button id="loadModelBtn">Load Model</button>
-
-</div>
-
-<div class="results">
-
-<h3>Status</h3>
-<div id="status"></div>
-
-<h3>Metrics</h3>
-<div id="metrics"></div>
-
-<h3>Preview</h3>
-<div id="previewRow"></div>
-
-</div>
-
-</div>
-
-<script type="module" src="app.js"></script>
-
+  <!-- Defer-load the app scripts -->
+  <script defer src="./data-loader.js"></script>
+  <script defer src="./app.js"></script>
 </body>
 </html>
