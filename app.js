@@ -140,6 +140,11 @@
 
   // Load Data: read both CSV files, build tensors, split into train/val, and show counts.
   async function onLoadData() {
+    if (!window.MNISTData) {
+    alert('MNISTData helper is not available. Make sure data-loader.js is loaded before app.js.');
+    console.error('data-loader.js did not initialize window.MNISTData');
+    return;
+  }
     try {
       setUIState({ loading: true, hasData: !!rawTrain, hasModel: !!model });
       els.trainingLogs.textContent = '';
