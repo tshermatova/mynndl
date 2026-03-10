@@ -2,41 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>TensorFlow.js MNIST CNN Demo (CSV Upload)</title>
+<title>TensorFlow.js MNIST CNN Demo</title>
 
-<!-- TensorFlow.js -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-
-<!-- tfjs-vis visualization toolkit -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@latest"></script>
 
 <style>
-/* -------------------------------------------------------------
-Minimal layout styling for a two-column teaching demo.
-Left column = controls + logs
-Right column = metrics + previews
-------------------------------------------------------------- */
 
 body{
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: Arial;
   margin:0;
-  background:#fafafa;
+  background:#f5f5f5;
 }
 
 header{
-  padding:12px 20px;
   background:#222;
   color:white;
+  padding:12px 20px;
 }
 
 main{
   display:grid;
-  grid-template-columns: 360px 1fr;
+  grid-template-columns:360px 1fr;
   gap:16px;
   padding:16px;
 }
-
-/* control panel */
 
 .panel{
   background:white;
@@ -46,25 +36,15 @@ main{
   margin-bottom:12px;
 }
 
-.panel h3{
-  margin-top:0;
-}
-
 button{
   width:100%;
   padding:8px;
   margin:4px 0;
 }
 
-input[type=file]{
-  width:100%;
-  margin-bottom:6px;
-}
-
 #previewRow{
   display:flex;
-  gap:12px;
-  align-items:flex-start;
+  gap:14px;
 }
 
 .previewItem{
@@ -76,18 +56,13 @@ input[type=file]{
   image-rendering:pixelated;
 }
 
-.correct{
-  color:green;
-}
-
-.wrong{
-  color:red;
-}
+.correct{color:green}
+.wrong{color:red}
 
 #log{
   font-family:monospace;
   white-space:pre-wrap;
-  max-height:180px;
+  max-height:200px;
   overflow:auto;
 }
 
@@ -97,91 +72,78 @@ input[type=file]{
 <body>
 
 <header>
-<h2>TensorFlow.js MNIST CNN (Browser-Only Demo)</h2>
+<h2>TensorFlow.js MNIST CNN Demo</h2>
 </header>
 
 <main>
 
-<!-- LEFT COLUMN -->
 <div>
 
 <div class="panel">
 <h3>Upload Data</h3>
 
+<label>Train CSV</label>
 <input type="file" id="trainFile" accept=".csv">
-<label>Upload Train CSV</label>
 
+<label>Test CSV</label>
 <input type="file" id="testFile" accept=".csv">
-<label>Upload Test CSV</label>
 
 <button id="loadBtn">Load Data</button>
+<button id="resetBtn">Reset (Clear Files)</button>
 
-<div id="dataStatus">No data loaded.</div>
-
+<div id="dataStatus">No data loaded</div>
 </div>
 
-
 <div class="panel">
-<h3>Training Controls</h3>
-
+<h3>Training</h3>
 <button id="trainBtn">Train</button>
 <button id="evalBtn">Evaluate</button>
 <button id="testFiveBtn">Test 5 Random</button>
-
 </div>
 
-
 <div class="panel">
-<h3>Model Management</h3>
+<h3>Model</h3>
 
-<button id="saveBtn">Save Model (Download)</button>
+<button id="saveBtn">Save Model</button>
 
 <input type="file" id="modelJson">
 <input type="file" id="modelBin">
 
-<button id="loadModelBtn">Load Model (From Files)</button>
-
-<button id="resetBtn">Reset</button>
-
+<button id="loadModelBtn">Load Model</button>
 <button id="toggleVisorBtn">Toggle Visor</button>
 
 </div>
 
-
 <div class="panel">
-<h3>Training Logs</h3>
+<h3>Logs</h3>
 <div id="log"></div>
 </div>
 
 </div>
 
-
-<!-- RIGHT COLUMN -->
 <div>
 
 <div class="panel">
 <h3>Metrics</h3>
-<div id="metrics">No evaluation yet.</div>
+<div id="metrics"></div>
 </div>
 
 <div class="panel">
-<h3>Random 5 Preview</h3>
+<h3>Random Preview</h3>
 <div id="previewRow"></div>
 </div>
 
 <div class="panel">
 <h3>Model Info</h3>
-<pre id="modelInfo">No model built.</pre>
+<pre id="modelInfo"></pre>
 </div>
 
 </div>
 
 </main>
 
-
-<!-- Scripts -->
-<script src="data-loader.js" defer></script>
-<script src="app.js" defer></script>
+<!-- IMPORTANT: module loading -->
+<script type="module" src="app.js"></script>
 
 </body>
 </html>
