@@ -1,148 +1,63 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>TensorFlow.js MNIST CNN Demo</title>
+<meta charset="utf-8">
+<title>MNIST TensorFlow.js Demo</title>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis"></script>
 
-<style>
-
-body{
-  font-family: Arial;
-  margin:0;
-  background:#f5f5f5;
-}
-
-header{
-  background:#222;
-  color:white;
-  padding:12px 20px;
-}
-
-main{
-  display:grid;
-  grid-template-columns:360px 1fr;
-  gap:16px;
-  padding:16px;
-}
-
-.panel{
-  background:white;
-  border-radius:6px;
-  padding:14px;
-  box-shadow:0 1px 4px rgba(0,0,0,0.1);
-  margin-bottom:12px;
-}
-
-button{
-  width:100%;
-  padding:8px;
-  margin:4px 0;
-}
-
-#previewRow{
-  display:flex;
-  gap:14px;
-}
-
-.previewItem{
-  text-align:center;
-}
-
-.previewItem canvas{
-  border:1px solid #ccc;
-  image-rendering:pixelated;
-}
-
-.correct{color:green}
-.wrong{color:red}
-
-#log{
-  font-family:monospace;
-  white-space:pre-wrap;
-  max-height:200px;
-  overflow:auto;
-}
-
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
 
-<header>
-<h2>TensorFlow.js MNIST CNN Demo</h2>
-</header>
+<h2>MNIST CNN Trainer (Browser)</h2>
 
-<main>
+<div class="layout">
 
-<div>
+<div class="controls">
 
-<div class="panel">
-<h3>Upload Data</h3>
+<h3>Dataset</h3>
 
-<label>Train CSV</label>
-<input type="file" id="trainFile" accept=".csv">
-
-<label>Test CSV</label>
-<input type="file" id="testFile" accept=".csv">
+<input type="file" id="trainFile">
+<input type="file" id="testFile">
 
 <button id="loadBtn">Load Data</button>
-<button id="resetBtn">Reset (Clear Files)</button>
+<button id="resetBtn">Reset</button>
 
-<div id="dataStatus">No data loaded</div>
-</div>
-
-<div class="panel">
 <h3>Training</h3>
+
 <button id="trainBtn">Train</button>
 <button id="evalBtn">Evaluate</button>
-<button id="testFiveBtn">Test 5 Random</button>
-</div>
+<button id="testBtn">Test 5 Random</button>
 
-<div class="panel">
 <h3>Model</h3>
 
 <button id="saveBtn">Save Model</button>
 
 <input type="file" id="modelJson">
-<input type="file" id="modelBin">
+<input type="file" id="modelWeights">
 
 <button id="loadModelBtn">Load Model</button>
-<button id="toggleVisorBtn">Toggle Visor</button>
 
 </div>
 
-<div class="panel">
-<h3>Logs</h3>
-<div id="log"></div>
-</div>
+<div class="results">
 
-</div>
+<h3>Status</h3>
+<div id="status"></div>
 
-<div>
-
-<div class="panel">
 <h3>Metrics</h3>
 <div id="metrics"></div>
-</div>
 
-<div class="panel">
-<h3>Random Preview</h3>
+<h3>Preview</h3>
 <div id="previewRow"></div>
-</div>
 
-<div class="panel">
-<h3>Model Info</h3>
-<pre id="modelInfo"></pre>
 </div>
 
 </div>
 
-</main>
-
-<!-- IMPORTANT: module loading -->
 <script type="module" src="app.js"></script>
 
 </body>
