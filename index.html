@@ -1,8 +1,9 @@
+<!-- index.html -->
 <!doctype <htmlhtml>
  <headlang="en">
 >
   <meta charset="UTF-8" />
-  <title>MNIST TF.js (Browser-only CSV Trainer)</title>
+  <title>MNIST TF.js Denoising Autoencoder (Browser-only CSV)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- TensorFlow.js and tfjs-vis CDNs -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
@@ -17,35 +18,119 @@
       --accent: #4da3ff;
       --ok: #1ecb5b;
       --bad: #ef476f;
+      --line: #1e2630;
     }
-    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
-    a { color: var(--accent); }
-    h1, h2, h3 { margin: 8px 0; }
-    small { color: var(--muted); }
-    .app { display: grid; grid-template-columns: 360px 1fr; gap: var(--gap); padding: var(--gap); box-sizing: border-box; }
-    .panel { background: var(--panel); border: 1px solid #1e2630; border-radius: 8px; padding: 12px; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    .app {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: var(--gap);
+      padding: var(--gap);
+      box-sizing: border-box;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
     .left .panel + .panel { margin-top: var(--gap); }
-    .controls .row { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 10px; }
+    .controls .row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
     label { font-weight: 600; display: block; margin-bottom: 4px; }
     input[type="file"] { width: 100%; color: var(--muted); }
-    .btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
-    button { background: #1a2330; color: var(--text); border: 1px solid #263141; border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: background .15s, transform .06s; }
+    .btns {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+    button {
+      background: #1a2330;
+      color: var(--text);
+      border: 1px solid #263141;
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      transition: background .15s, transform .06s;
+    }
     button:hover { background: #223047; }
     button:active { transform: translateY(1px); }
     button:disabled { opacity: .6; cursor: not-allowed; }
+    .muted { color: var(--muted); }
     .sections .section + .section { margin-top: var(--gap); }
     .section h3 { margin-top: 0; }
-    .muted { color: var(--muted); }
-    #trainingLogs { background: #0e141a; border: 1px solid #1e2630; padding: 8px; height: 160px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; border-radius: 6px; white-space: pre-wrap; }
+
+    .kv {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 10px;
+      align-items: baseline;
+    }
+
+    #trainingLogs {
+      background: #0e141a;
+      border: 1px solid var(--line);
+      padding: 8px;
+      height: 160px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+    }
+
     .preview { display: flex; flex-direction: column; gap: 6px; }
-    .preview-row { display: flex; gap: 10px; align-items: center; overflow-x: auto; padding-bottom: 4px; }
-    .preview-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-    .preview-item canvas { width: 112px; height: 112px; image-rendering: pixelated; border: 1px solid #2a3550; border-radius: 4px; background: #0a0f14; }
-    .pred { font-weight: 700; }
-    .pred.ok { color: var(--ok); }
-    .pred.bad { color: var(--bad); }
-    .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: baseline; }
+    .preview-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .preview-item {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      text-align: center;
+    }
+    .thumbs {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+    }
+    .thumb {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      align-items: center;
+    }
+    .preview-item canvas {
+      width: 112px;  /* 28 * 4 */
+      height: 112px; /* 28 * 4 */
+      image-rendering: pixelated;
+      border: 1px solid #2a3550;
+      border-radius: 4px;
+      background: #0a0f14;
+    }
+    .caption { font-size: 12px; color: var(--muted); }
+
     .footer-note { margin-top: 6px; font-size: 12px; color: var(--muted); }
+    .hr { margin: 10px 0; border-bottom: 1px solid var(--line); }
+    .inline { display: flex; align-items: center; gap: 8px; }
+    input[type="range"] { width: 100%; }
+    input[type="number"] { width: 80px; }
+    select { width: 100%; padding: 6px; background: #1a2330; color: var(--text); border: 1px solid #263141; border-radius: 6px; }
   <body</style>
 </head>
 >
@@ -62,21 +147,38 @@
             <label for="testCsv">Upload Test CSV (mnist_test.csv)</label>
             <input type="file" id="testCsv" accept=".csv,text/csv" />
           </div>
+
+          <div class="hr"></div>
+          <div>
+            <label>Denoising Noise Level (σ, Gaussian)</label>
+            <div class="inline">
+              <input type="range" id="noiseLevel" min="0" max="0.6" step="0.01" value="0.3" />
+              <input type="number" id="noiseLevelNum" min="0" max="0.6" step="0.01" value="0.3" />
+            </div>
+            <small class="muted">Step 1: Test data will be noised with zero-mean Gaussian noise at this σ, then clipped to [0,1].</small>
+          </div>
+
           <div class="btns">
             <button id="btnLoadData">Load Data</button>
             <button id="btnToggleVisor">Toggle Visor</button>
-            <button id="btnTrain" disabled>Train</button>
-            <button id="btnEvaluate" disabled>Evaluate</button>
-            <button id="btnTestFive" disabled>Test 5 Random</button>
+            <button id="btnTrain" disabled>Train (AE: Max & Avg Pool)</button>
+            <button id="btnEvaluate" disabled>Evaluate (Avg PSNR)</button>
+            <button id="btnTestFive" disabled>Test 5 Random (Denoise)</button>
             <button id="btnReset">Reset</button>
           </div>
-        </div>
 
-        <h3>Model Save/Load (Files Only)</h3>
-        <div class="row">
+          <div class="hr"></div>
+          <h3>Model Save/Load (Files Only)</h3>
+          <div>
+            <label for="modelSlot">Model Slot</label>
+            <select id="modelSlot">
+              <option value="max">MaxPool AE</option>
+              <option value="avg">AvgPool AE</option>
+            </select>
+          </div>
           <div class="btns">
-            <button id="btnSave" disabled>Save Model (Download)</button>
-            <button id="btnLoadModel">Load Model (From Files)</button>
+            <button id="btnSave" disabled>Save Selected Model (Download)</button>
+            <button id="btnLoadModel">Load Into Selected Slot</button>
           </div>
           <div>
             <label for="modelJson">model.json</label>
@@ -86,11 +188,15 @@
             <label for="modelWeights">weights.bin</label>
             <input type="file" id="modelWeights" accept=".bin,application/octet-stream" />
           </div>
-        </div>
-        <div class="footer-note">
-          • All data stays in your browser. No network fetches or storage. <br />
-          • Use tfjs-vis visor panels for charts. <br />
-          • CSV format: label, 784 pixel values (0–255), no header.
+
+          <div class="footer-note">
+            Steps:
+            <br />• Step 1: Add random Gaussian noise to test (and training inputs).
+            <br />• Step 2: Train two CNN autoencoders for denoising (MaxPool & AvgPool).
+            <br />• Step 3: Use “Test 5 Random” to compare both denoisers.
+            <br />• Step 4: Save and reload a model to reproduce results.
+            <br /><br />All data stays in your browser. No network fetches or storage.
+          </div>
         </div>
       </div>
     </div>
@@ -110,22 +216,24 @@
         <div class="panel section">
           <h3>Metrics</h3>
           <div class="kv">
-            <div>Overall Test Accuracy:</div>
-            <div id="overallAcc" class="muted">—</div>
+            <div>Avg PSNR (MaxPool AE):</div>
+            <div id="psnrMax" class="muted">—</div>
+            <div>Avg PSNR (AvgPool AE):</div>
+            <div id="psnrAvg" class="muted">—</div>
           </div>
           <div class="footer-note">
-            Confusion matrix and per-class accuracy will appear in the tfjs-vis visor (Evaluation tab).
+            Training/validation curves appear in the tfjs-vis visor (Training tabs).
           </div>
         </div>
 
         <div class="panel section preview">
-          <h3>Random 5 Preview</h3>
+          <h3>Random 5 Preview (Original vs Noisy vs Denoised)</h3>
           <div id="previewRow" class="preview-row"></div>
         </div>
 
         <div class="panel section">
           <h3>Model Info</h3>
-          <div id="modelInfo" class="muted">No model yet.</div>
+          <div id="modelInfo" class="muted">No models yet.</div>
         </div>
       </div>
     </div>
@@ -135,4 +243,4 @@
   <script defer src="./data-loader.js"></script>
   <script defer src="./app.js"></script>
 </body>
-</html>
+</html>    
