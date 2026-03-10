@@ -1,246 +1,258 @@
-<!-- index.html -->
-<!doctype <htmlhtml>
- <headlang="en">
->
-  <meta charset="UTF-8" />
-  <title>MNIST TF.js Denoising Autoencoder (Browser-only CSV)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- TensorFlow.js and tfjs-vis CDNs -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.5.1/dist/tfjs-vis.umd.min.js"></script>
-  <style>
-    :root {
-      --gap: 12px;
-      --bg: #101418;
-      --panel: #141a20;
-      --text: #e8eef5;
-      --muted: #a6b3c2;
-      --accent: #4da3ff;
-      --ok: #1ecb5b;
-      --bad: #ef476f;
-      --line: #1e2630;
-    }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    }
-    .app {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: var(--gap);
-      padding: var(--gap);
-      box-sizing: border-box;
-    }
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
-    }
-    .left .panel + .panel { margin-top: var(--gap); }
-    .controls .row {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
-    label { font-weight: 600; display: block; margin-bottom: 4px; }
-    input[type="file"] { width: 100%; color: var(--muted); }
-    .btns {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      margin-top: 8px;
-    }
-    button {
-      background: #1a2330;
-      color: var(--text);
-      border: 1px solid #263141;
-      border-radius: 6px;
-      padding: 8px 10px;
-      cursor: pointer;
-      transition: background .15s, transform .06s;
-    }
-    button:hover { background: #223047; }
-    button:active { transform: translateY(1px); }
-    button:disabled { opacity: .6; cursor: not-allowed; }
-    .muted { color: var(--muted); }
-    .sections .section + .section { margin-top: var(--gap); }
-    .section h3 { margin-top: 0; }
-
-    .kv {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 6px 10px;
-      align-items: baseline;
-    }
-
-    #trainingLogs {
-      background: #0e141a;
-      border: 1px solid var(--line);
-      padding: 8px;
-      height: 160px;
-      overflow: auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size: 12px;
-      border-radius: 6px;
-      white-space: pre-wrap;
-    }
-
-    .preview { display: flex; flex-direction: column; gap: 6px; }
-    .preview-row {
-      display: flex;
-      gap: 16px;
-      align-items: flex-start;
-      overflow-x: auto;
-      padding-bottom: 4px;
-    }
-    .preview-item {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 6px;
-      text-align: center;
-    }
-    .thumbs {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 6px;
-    }
-    .thumb {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      align-items: center;
-    }
-    .preview-item canvas {
-      width: 112px;  /* 28 * 4 */
-      height: 112px; /* 28 * 4 */
-      image-rendering: pixelated;
-      border: 1px solid #2a3550;
-      border-radius: 4px;
-      background: #0a0f14;
-    }
-    .caption { font-size: 12px; color: var(--muted); }
-
-    .footer-note { margin-top: 6px; font-size: 12px; color: var(--muted); }
-    .hr { margin: 10px 0; border-bottom: 1px solid var(--line); }
-    .inline { display: flex; align-items: center; gap: 8px; }
-    input[type="range"] { width: 100%; }
-    input[type="number"] { width: 80px; }
-    select { width: 100%; padding: 6px; background: #1a2330; color: var(--text); border: 1px solid #263141; border-radius: 6px; }
-  <body</style>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MNIST browser trainer · denoising autoencoder demo</title>
+    <!-- minimal two‑column + preview strip CSS -->
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        }
+        body {
+            background: #f6f8fa;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+        }
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            background: white;
+            border-radius: 28px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.1);
+            padding: 28px 32px;
+        }
+        h1 {
+            font-size: 1.9rem;
+            font-weight: 500;
+            margin-top: 0;
+            margin-bottom: 24px;
+            color: #1f2937;
+            border-left: 6px solid #3b82f6;
+            padding-left: 18px;
+        }
+        .control-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px 16px;
+            align-items: center;
+            background: #f0f4f8;
+            padding: 18px 20px;
+            border-radius: 40px;
+            margin-bottom: 28px;
+        }
+        .file-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: white;
+            padding: 6px 14px 6px 18px;
+            border-radius: 40px;
+            border: 1px solid #d1d9e6;
+        }
+        .file-group label {
+            font-weight: 500;
+            color: #2c3e50;
+            font-size: 0.9rem;
+        }
+        button {
+            background: white;
+            border: 1px solid #bdc9dc;
+            border-radius: 40px;
+            padding: 8px 20px;
+            font-weight: 500;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: 0.15s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            color: #1e293b;
+        }
+        button:hover {
+            background: #e6edf6;
+            border-color: #3b82f6;
+            box-shadow: 0 4px 8px rgba(59,130,246,0.1);
+        }
+        .danger-btn {
+            background: #fee2e2;
+            border-color: #f87171;
+            color: #991b1b;
+        }
+        .danger-btn:hover {
+            background: #fecaca;
+        }
+        .load-model-area {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+            background: white;
+            padding: 5px 15px;
+            border-radius: 40px;
+            border: 1px dashed #3b82f6;
+        }
+        .load-model-area span {
+            font-size: 0.9rem;
+            color: #2563eb;
+        }
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 24px;
+            margin: 24px 0;
+        }
+        .status-box {
+            background: #f8fafc;
+            border-radius: 20px;
+            padding: 18px;
+            border: 1px solid #e2e8f0;
+        }
+        .status-box h3 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            font-weight: 500;
+            color: #334155;
+        }
+        #data-status, #model-info, #metrics-display {
+            background: white;
+            padding: 12px 14px;
+            border-radius: 16px;
+            border: 1px solid #e9eef3;
+            font-size: 0.95rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        #metrics-display {
+            min-height: 60px;
+        }
+        .preview-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            justify-content: flex-start;
+            margin-top: 20px;
+            padding: 12px 0;
+        }
+        .preview-card {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 12px 8px 8px 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            text-align: center;
+            border: 1px solid #dee7f0;
+        }
+        .preview-card canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 12px;
+            background: #1e1e2f;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        .prediction {
+            margin-top: 8px;
+            font-weight: 600;
+            font-size: 1.2rem;
+        }
+        .correct {
+            color: #059669;
+        }
+        .wrong {
+            color: #b91c1c;
+        }
+        .log-area {
+            background: #1a2634;
+            color: #dde5ed;
+            border-radius: 18px;
+            padding: 16px;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.85rem;
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 16px 0;
+        }
+        .info-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            align-items: flex-start;
+        }
+        hr {
+            border: none;
+            border-top: 2px solid #e1eaf1;
+            margin: 20px 0;
+        }
+        .small-note {
+            color: #64748b;
+            font-size: 0.8rem;
+            margin-left: 10px;
+        }
+    </style>
+    <!-- TensorFlow.js and tfjs-vis CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@latest"></script>
+    <!-- defer load our two modules -->
+    <script src="data-loader.js" defer></script>
+    <script src="app.js" defer></script>
 </head>
->
-  <div class="app">
-    <div class="left">
-      <div class="panel controls">
-        <h2>Controls</h2>
-        <div class="row">
-          <div>
-            <label for="trainCsv">Upload Train CSV (mnist_train.csv)</label>
-            <input type="file" id="trainCsv" accept=".csv,text/csv" />
-          </div>
-          <div>
-            <label for="testCsv">Upload Test CSV (mnist_test.csv)</label>
-            <input type="file" id="testCsv" accept=".csv,text/csv" />
-          </div>
+<body>
+<div class="container">
+    <h1>🧠 MNIST denoising autoencoder · client‑side TF.js</h1>
 
-          <div class="hr"></div>
-          <div>
-            <label>Denoising Noise Level (σ, Gaussian)</label>
-            <div class="inline">
-              <input type="range" id="noiseLevel" min="0" max="0.6" step="0.01" value="0.3" />
-              <input type="number" id="noiseLevelNum" min="0" max="0.6" step="0.01" value="0.3" />
+    <!-- Controls row -->
+    <div class="control-panel">
+        <div class="file-group">
+            <label>📁 train.csv</label>
+            <input type="file" id="train-file" accept=".csv">
+        </div>
+        <div class="file-group">
+            <label>📁 test.csv</label>
+            <input type="file" id="test-file" accept=".csv">
+        </div>
+        <button id="load-data-btn">📊 Load data</button>
+        <button id="train-btn">⚡ Train (5 epochs)</button>
+        <button id="evaluate-btn">📈 Evaluate</button>
+        <button id="test-five-btn">🎲 Test 5 random (denoise)</button>
+        <button id="save-model-btn">💾 Save model</button>
+        <div class="load-model-area">
+            <span>🔁 load:</span>
+            <input type="file" id="model-json-file" accept=".json,*.bin" style="max-width:140px;">
+            <button id="load-model-btn">↩️ from files</button>
+        </div>
+        <button id="reset-btn" class="danger-btn">🗑️ Reset</button>
+        <button id="toggle-visor-btn">👁️ Toggle visor</button>
+    </div>
+
+    <!-- two column layout -->
+    <div class="two-col">
+        <!-- left column: status, logs, metrics -->
+        <div class="status-box">
+            <h3>📋 data status</h3>
+            <div id="data-status">⏳ no files loaded</div>
+            <h3 style="margin-top:18px;">📝 training log</h3>
+            <div id="log-area" class="log-area">// logs appear here</div>
+            <h3>📊 metrics & accuracy</h3>
+            <div id="metrics-display">overall accuracy: —</div>
+        </div>
+        <!-- right column: model info + preview row -->
+        <div class="status-box">
+            <h3>🧩 model info</h3>
+            <div id="model-info">CNN autoencoder (denoising) + classifier</div>
+            <h3>🎯 random 5 preview (denoising)</h3>
+            <div id="preview-container" class="preview-row">
+                <!-- filled with canvases and labels -->
+                <span style="color:#6b7280;">click "Test 5 random" to see denoising results</span>
             </div>
-            <small class="muted">Step 1: Test data will be noised with zero-mean Gaussian noise at this σ, then clipped to [0,1].</small>
-          </div>
-
-          <div class="btns">
-            <button id="btnLoadData">Load Data</button>
-            <button id="btnToggleVisor">Toggle Visor</button>
-            <button id="btnTrain" disabled>Train (AE: Max & Avg Pool)</button>
-            <button id="btnEvaluate" disabled>Evaluate (Avg PSNR)</button>
-            <button id="btnTestFive" disabled>Test 5 Random (Denoise)</button>
-            <button id="btnReset">Reset</button>
-          </div>
-
-          <div class="hr"></div>
-          <h3>Model Save/Load (Files Only)</h3>
-          <div>
-            <label for="modelSlot">Model Slot</label>
-            <select id="modelSlot">
-              <option value="max">MaxPool AE</option>
-              <option value="avg">AvgPool AE</option>
-            </select>
-          </div>
-          <div class="btns">
-            <button id="btnSave" disabled>Save Selected Model (Download)</button>
-            <button id="btnLoadModel">Load Into Selected Slot</button>
-          </div>
-          <div>
-            <label for="modelJson">model.json</label>
-            <input type="file" id="modelJson" accept=".json,application/json" />
-          </div>
-          <div>
-            <label for="modelWeights">weights.bin</label>
-            <input type="file" id="modelWeights" accept=".bin,application/octet-stream" />
-          </div>
-
-          <div class="footer-note">
-            Steps:
-            <br />• Step 1: Add random Gaussian noise to test (and training inputs).
-            <br />• Step 2: Train two CNN autoencoders for denoising (MaxPool & AvgPool).
-            <br />• Step 3: Use “Test 5 Random” to compare both denoisers.
-            <br />• Step 4: Save and reload a model to reproduce results.
-            <br /><br />All data stays in your browser. No network fetches or storage.
-          </div>
         </div>
-      </div>
     </div>
-
-    <div class="right">
-      <div class="sections">
-        <div class="panel section">
-          <h3>Data Status</h3>
-          <div id="dataStatus" class="muted">No data loaded.</div>
-        </div>
-
-        <div class="panel section">
-          <h3>Training Logs</h3>
-          <div id="trainingLogs"></div>
-        </div>
-
-        <div class="panel section">
-          <h3>Metrics</h3>
-          <div class="kv">
-            <div>Avg PSNR (MaxPool AE):</div>
-            <div id="psnrMax" class="muted">—</div>
-            <div>Avg PSNR (AvgPool AE):</div>
-            <div id="psnrAvg" class="muted">—</div>
-          </div>
-          <div class="footer-note">
-            Training/validation curves appear in the tfjs-vis visor (Training tabs).
-          </div>
-        </div>
-
-        <div class="panel section preview">
-          <h3>Random 5 Preview (Original vs Noisy vs Denoised)</h3>
-          <div id="previewRow" class="preview-row"></div>
-        </div>
-
-        <div class="panel section">
-          <h3>Model Info</h3>
-          <div id="modelInfo" class="muted">No models yet.</div>
-        </div>
-      </div>
+    <hr>
+    <div style="display: flex; justify-content: space-between; font-size:0.85rem; color:#4b5563;">
+        <span>🔊 noise added to test images (random 0–0.3)</span>
+        <span>🔄 autoencoder with max & average pooling (two versions) → classifier</span>
     </div>
-  </div>
-
-  <!-- Defer-load the app scripts (order matters) -->
-  <script defer src="./data-loader.js"></script>
-  <script defer src="./app.js"></script>
+</div>
 </body>
-</html>    
+</html>
