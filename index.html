@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TensorFlow.js MNIST CNN Demo (CSV Upload)</title>
+
+<!-- TensorFlow.js -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+
+<!-- tfjs-vis visualization toolkit -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@latest"></script>
+
+<style>
+/* -------------------------------------------------------------
+Minimal layout styling for a two-column teaching demo.
+Left column = controls + logs
+Right column = metrics + previews
+------------------------------------------------------------- */
+
+body{
+  font-family: Arial, Helvetica, sans-serif;
+  margin:0;
+  background:#fafafa;
+}
+
+header{
+  padding:12px 20px;
+  background:#222;
+  color:white;
+}
+
+main{
+  display:grid;
+  grid-template-columns: 360px 1fr;
+  gap:16px;
+  padding:16px;
+}
+
+/* control panel */
+
+.panel{
+  background:white;
+  border-radius:6px;
+  padding:14px;
+  box-shadow:0 1px 4px rgba(0,0,0,0.1);
+  margin-bottom:12px;
+}
+
+.panel h3{
+  margin-top:0;
+}
+
+button{
+  width:100%;
+  padding:8px;
+  margin:4px 0;
+}
+
+input[type=file]{
+  width:100%;
+  margin-bottom:6px;
+}
+
+#previewRow{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+}
+
+.previewItem{
+  text-align:center;
+}
+
+.previewItem canvas{
+  border:1px solid #ccc;
+  image-rendering:pixelated;
+}
+
+.correct{
+  color:green;
+}
+
+.wrong{
+  color:red;
+}
+
+#log{
+  font-family:monospace;
+  white-space:pre-wrap;
+  max-height:180px;
+  overflow:auto;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+<h2>TensorFlow.js MNIST CNN (Browser-Only Demo)</h2>
+</header>
+
+<main>
+
+<!-- LEFT COLUMN -->
+<div>
+
+<div class="panel">
+<h3>Upload Data</h3>
+
+<input type="file" id="trainFile" accept=".csv">
+<label>Upload Train CSV</label>
+
+<input type="file" id="testFile" accept=".csv">
+<label>Upload Test CSV</label>
+
+<button id="loadBtn">Load Data</button>
+
+<div id="dataStatus">No data loaded.</div>
+
+</div>
+
+
+<div class="panel">
+<h3>Training Controls</h3>
+
+<button id="trainBtn">Train</button>
+<button id="evalBtn">Evaluate</button>
+<button id="testFiveBtn">Test 5 Random</button>
+
+</div>
+
+
+<div class="panel">
+<h3>Model Management</h3>
+
+<button id="saveBtn">Save Model (Download)</button>
+
+<input type="file" id="modelJson">
+<input type="file" id="modelBin">
+
+<button id="loadModelBtn">Load Model (From Files)</button>
+
+<button id="resetBtn">Reset</button>
+
+<button id="toggleVisorBtn">Toggle Visor</button>
+
+</div>
+
+
+<div class="panel">
+<h3>Training Logs</h3>
+<div id="log"></div>
+</div>
+
+</div>
+
+
+<!-- RIGHT COLUMN -->
+<div>
+
+<div class="panel">
+<h3>Metrics</h3>
+<div id="metrics">No evaluation yet.</div>
+</div>
+
+<div class="panel">
+<h3>Random 5 Preview</h3>
+<div id="previewRow"></div>
+</div>
+
+<div class="panel">
+<h3>Model Info</h3>
+<pre id="modelInfo">No model built.</pre>
+</div>
+
+</div>
+
+</main>
+
+
+<!-- Scripts -->
+<script src="data-loader.js" defer></script>
+<script src="app.js" defer></script>
+
+</body>
+</html>
