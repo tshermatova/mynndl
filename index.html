@@ -1,5 +1,4 @@
-
-<!DOCTYPE <htmlhtml>
+<!doctype <htmlhtml>
  <headlang="en">
 >
   <meta charset="UTF-8" />
@@ -19,124 +18,34 @@
       --ok: #1ecb5b;
       --bad: #ef476f;
     }
-    html, body {
-      height: 100%;
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
-    }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
     a { color: var(--accent); }
     h1, h2, h3 { margin: 8px 0; }
     small { color: var(--muted); }
-
-    .app {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: var(--gap);
-      padding: var(--gap);
-      box-sizing: border-box;
-    }
-    .panel {
-      background: var(--panel);
-      border: 1px solid #1e2630;
-      border-radius: 8px;
-      padding: 12px;
-    }
+    .app { display: grid; grid-template-columns: 360px 1fr; gap: var(--gap); padding: var(--gap); box-sizing: border-box; }
+    .panel { background: var(--panel); border: 1px solid #1e2630; border-radius: 8px; padding: 12px; }
     .left .panel + .panel { margin-top: var(--gap); }
-    .controls .row {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-      margin-bottom: 10px;
-    }
+    .controls .row { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 10px; }
     label { font-weight: 600; display: block; margin-bottom: 4px; }
-    input[type="file"] {
-      width: 100%;
-      color: var(--muted);
-    }
-    .btns {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-      margin-top: 8px;
-    }
-    button {
-      background: #1a2330;
-      color: var(--text);
-      border: 1px solid #263141;
-      border-radius: 6px;
-      padding: 8px 10px;
-      cursor: pointer;
-      transition: background .15s, transform .06s;
-    }
+    input[type="file"] { width: 100%; color: var(--muted); }
+    .btns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px; }
+    button { background: #1a2330; color: var(--text); border: 1px solid #263141; border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: background .15s, transform .06s; }
     button:hover { background: #223047; }
     button:active { transform: translateY(1px); }
-    button:disabled {
-      opacity: .6;
-      cursor: not-allowed;
-    }
-
+    button:disabled { opacity: .6; cursor: not-allowed; }
     .sections .section + .section { margin-top: var(--gap); }
     .section h3 { margin-top: 0; }
     .muted { color: var(--muted); }
-
-    #trainingLogs {
-      background: #0e141a;
-      border: 1px solid #1e2630;
-      padding: 8px;
-      height: 160px;
-      overflow: auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size: 12px;
-      border-radius: 6px;
-      white-space: pre-wrap;
-    }
-
-    .preview {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .preview-row {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-      overflow-x: auto;
-      padding-bottom: 4px;
-    }
-    .preview-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 6px;
-    }
-    .preview-item canvas {
-      width: 112px;  /* 28 * 4 */
-      height: 112px; /* 28 * 4 */
-      image-rendering: pixelated; /* keep hard edges */
-      border: 1px solid #2a3550;
-      border-radius: 4px;
-      background: #0a0f14;
-    }
-    .pred {
-      font-weight: 700;
-    }
+    #trainingLogs { background: #0e141a; border: 1px solid #1e2630; padding: 8px; height: 160px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 12px; border-radius: 6px; white-space: pre-wrap; }
+    .preview { display: flex; flex-direction: column; gap: 6px; }
+    .preview-row { display: flex; gap: 10px; align-items: center; overflow-x: auto; padding-bottom: 4px; }
+    .preview-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .preview-item canvas { width: 112px; height: 112px; image-rendering: pixelated; border: 1px solid #2a3550; border-radius: 4px; background: #0a0f14; }
+    .pred { font-weight: 700; }
     .pred.ok { color: var(--ok); }
     .pred.bad { color: var(--bad); }
-
-    .kv {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 6px 10px;
-      align-items: baseline;
-    }
-
-    .footer-note {
-      margin-top: 6px;
-      font-size: 12px;
-      color: var(--muted);
-    }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: baseline; }
+    .footer-note { margin-top: 6px; font-size: 12px; color: var(--muted); }
   <body</style>
 </head>
 >
@@ -222,7 +131,7 @@
     </div>
   </div>
 
-  <!-- Defer-load the app scripts -->
+  <!-- Defer-load the app scripts (order matters) -->
   <script defer src="./data-loader.js"></script>
   <script defer src="./app.js"></script>
 </body>
